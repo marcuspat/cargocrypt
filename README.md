@@ -1,245 +1,255 @@
-# CargoCrypt 🔐
+# 🔐 CargoCrypt
 
-**Zero-config cryptographic operations for Rust projects**
+**⚠️ DEVELOPMENT STATUS: PROOF OF CONCEPT**
 
-CargoCrypt brings enterprise-grade cryptography to your Rust workflow with zero configuration required. Inspired by the success of tools like `cargo-audit` and `ripgrep`, it emphasizes performance, security, and developer experience.
+> **This project is currently in early development and is NOT ready for production use.**
+> Many features documented below are planned but not yet fully implemented.
+> See [Development Status](#development-status) for current implementation details.
 
-## Quick Start
+**Zero-config Rust secret management with git-native integration**
+
+CargoCrypt is a next-generation secret management tool designed specifically for Rust developers. It provides zero-config setup, git-native integration, and memory-safe cryptography powered by ChaCha20-Poly1305.
+
+## ⚠️ Development Status
+
+**Current Implementation Status:**
+
+✅ **Completed Features:**
+- Memory-safe ChaCha20-Poly1305 cryptography engine
+- Argon2id key derivation with secure defaults  
+- Comprehensive error handling system
+- Secret detection patterns (ML-trained, 50+ types)
+- Git integration framework
+- Basic CLI structure
+
+🚧 **In Development:**
+- File encryption/decryption operations
+- TUI dashboard with ratatui
+- Complete CLI command implementation
+- Performance benchmarks
+- Team collaboration features
+
+❌ **Not Yet Implemented:**
+- Package publication to crates.io
+- Complete git workflow integration
+- Biometric authentication
+- Provider API integrations
+- VSCode/editor extensions
+
+## ✨ Planned Features (When Complete)
+
+**The Problem with Server-Based Vaults:**
+- 📚 **Overengineered**: HashiCorp Vault and RustyVault require dedicated servers, network configuration, and ongoing maintenance
+- ⏰ **Setup Overhead**: Takes hours to days vs. minutes for CLI tools
+- 🐌 **Performance Issues**: Network latency, scaling challenges, connection dependencies
+- 😓 **Poor Developer Experience**: Constant friction in daily workflows
+
+**CargoCrypt's Solution:**
+- 🚀 **Zero-config**: Works with `cargo install cargocrypt && cargocrypt init`
+- 🔗 **Git-native**: Secrets managed like code with familiar git workflows
+- ⚡ **Offline-first**: No servers, no network dependencies, no infrastructure
+- 🦀 **Rust-native**: Type-safe integration with your Rust projects
+- 📱 **Sub-minute setup**: From install to secured secrets in <60 seconds
+
+## 🚀 Development Installation
+
+### Building from Source
 
 ```bash
-# Install
-cargo install cargocrypt
-
-# Initialize in your project (zero config!)
-cargo crypt init
-
-# Encrypt sensitive files
-cargo crypt encrypt src/secrets.rs
-
-# Decrypt when needed
-cargo crypt decrypt src/secrets.rs
-
-# Generate secure keys
-cargo crypt keygen --type ed25519
-
-# Interactive TUI mode
-cargo crypt tui
+git clone https://github.com/marcuspat/cargocrypt
+cd cargocrypt/cargocrypt
+cargo build --release
 ```
 
-## Features
+### Current Usage (Limited)
 
-### 🚀 Zero Configuration
-- **Works out of the box** - No config files needed
-- **Smart defaults** - Follows Rust ecosystem conventions
-- **Git integration** - Respects `.gitignore` and hooks
-- **Project detection** - Automatically finds Rust projects
-
-### 🔒 Enterprise Security
-- **Ring cryptography** - Battle-tested crypto primitives
-- **Multiple algorithms** - AES-256-GCM, ChaCha20-Poly1305, Ed25519
-- **Key management** - Secure key derivation and storage
-- **Audit trail** - All operations are logged
-
-### 💫 Developer Experience
-- **Fast** - Rust performance with optimized release builds
-- **Interactive TUI** - Beautiful terminal interface with `ratatui`
-- **Progress indicators** - Visual feedback for long operations
-- **Error messages** - Clear, actionable error reporting
-- **Shell completion** - Bash, Zsh, Fish support
-
-### 🔧 Rust-First Design
-- **Cargo integration** - Works seamlessly with `cargo` workflows
-- **Project-aware** - Understands Rust project structure
-- **CI/CD friendly** - Perfect for automated workflows
-- **Cross-platform** - Linux, macOS, Windows support
-
-## Philosophy
-
-CargoCrypt follows the **zero-config philosophy** pioneered by successful Rust tools:
-
-- **Convention over configuration** - Smart defaults that just work
-- **Performance by default** - Optimized for speed and memory usage
-- **Security by design** - Secure defaults, no foot-guns
-- **Developer happiness** - Intuitive commands and helpful output
-
-## Installation
-
-### From crates.io
 ```bash
-cargo install cargocrypt
+# Initialize project
+cargo run -- init
+
+# Basic CLI commands (some may not be fully implemented)
+cargo run -- encrypt --help
+cargo run -- decrypt --help
+cargo run -- config --help
 ```
 
-### From source
+### Testing the Crypto Engine
+
+```rust
+use cargocrypt::crypto::CryptoEngine;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Test the implemented crypto functionality
+    let engine = CryptoEngine::new().await?;
+    let encrypted = engine.encrypt_data(b"secret data", "password").await?;
+    let decrypted = engine.decrypt_data(&encrypted, "password").await?;
+    
+    Ok(())
+}
+```
+
+## 🔥 Planned Key Features
+
+### 🔐 **Memory-Safe Cryptography**
+- **ChaCha20-Poly1305** authenticated encryption
+- **Argon2id** key derivation with secure defaults
+- **Automatic memory zeroization** of sensitive data
+- **<1ms encryption/decryption** performance
+
+### 🔗 **Git-Native Integration**
+- **Automatic .gitignore** management for encrypted files
+- **Team collaboration** via encrypted git repositories
+- **Pre-commit hooks** prevent accidental secret commits
+- **Git attributes** for transparent encryption/decryption
+
+### 🧠 **Intelligent Secret Detection**
+- **ML-trained patterns** for 50+ secret types (AWS, GitHub, SSH, etc.)
+- **<5% false positive** rate with high accuracy
+- **<1 second** repository scanning
+- **Entropy analysis** for unknown secret patterns
+
+### 🎨 **Beautiful Developer Experience**
+- **Cargo-themed TUI** with intuitive navigation
+- **Smart clipboard** management with auto-clear
+- **Vim-like keybindings** for power users
+- **Real-time security** status and alerts
+
+## 📊 Performance Targets
+
+CargoCrypt aims to deliver **10x better performance** than server-based solutions:
+
+| Operation | Target | Server-Based | Improvement |
+|-----------|---------|--------------|-------------|
+| Setup Time | <60 seconds | 2-8 hours | **480x faster** |
+| Encryption | <1ms | ~50ms (network) | **50x faster** |
+| Repository Scan | <1 second | N/A | **∞x faster** |
+| Cold Start | Instant | 30-60s | **∞x faster** |
+
+## 🛠️ Development Roadmap
+
+### Phase 1: Core Implementation (Current)
+- ✅ Cryptographic engine
+- 🚧 File-level encryption/decryption
+- 🚧 Basic CLI commands
+- 🚧 Core error handling
+
+### Phase 2: User Experience
+- 📅 TUI dashboard implementation
+- 📅 Complete CLI feature set
+- 📅 Performance optimization
+- 📅 Comprehensive testing
+
+### Phase 3: Advanced Features
+- 📅 Git integration completion
+- 📅 Team collaboration
+- 📅 Provider API integrations
+- 📅 Editor extensions
+
+### Phase 4: Production Release
+- 📅 Security audit
+- 📅 Performance benchmarks
+- 📅 Publication to crates.io
+- 📅 Documentation completion
+
+## 🏗️ Architecture
+
+CargoCrypt follows a **local-first, git-native architecture**:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Developer     │    │   Git Repo      │    │   Team Members  │
+│                 │    │                 │    │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │ CargoCrypt  │ │◄──►│ │ Encrypted   │ │◄──►│ │ CargoCrypt  │ │
+│ │ CLI/TUI     │ │    │ │ Secrets     │ │    │ │ CLI/TUI     │ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
+│                 │    │                 │    │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │ Local       │ │    │ │ Team Keys   │ │    │ │ Local       │ │
+│ │ Keystore    │ │    │ │ (Git Refs)  │ │    │ │ Keystore    │ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## 🧪 Development
+
+### Running Tests
+
 ```bash
-git clone https://github.com/cargocrypt/cargocrypt
 cd cargocrypt
-cargo install --path .
-```
-
-### Binary releases
-Download from [GitHub Releases](https://github.com/cargocrypt/cargocrypt/releases)
-
-## Usage
-
-### Basic Operations
-
-```bash
-# Initialize project (creates .cargocrypt/ if needed)
-cargo crypt init
-
-# Encrypt files or directories
-cargo crypt encrypt src/api_keys.rs
-cargo crypt encrypt config/
-
-# Decrypt files
-cargo crypt decrypt src/api_keys.rs.enc
-
-# List encrypted files
-cargo crypt list
-
-# Verify integrity
-cargo crypt verify
-```
-
-### Key Management
-
-```bash
-# Generate new keys
-cargo crypt keygen --algorithm ed25519
-cargo crypt keygen --algorithm rsa4096
-
-# Import existing keys
-cargo crypt key import --file key.pem
-
-# Export public keys
-cargo crypt key export --public --format pem
-
-# Rotate keys
-cargo crypt key rotate --backup
-```
-
-### Interactive Mode
-
-```bash
-# Launch TUI
-cargo crypt tui
-```
-
-The TUI provides:
-- **File browser** - Navigate and select files to encrypt/decrypt
-- **Key management** - Visual key generation and management
-- **Progress tracking** - Real-time operation status
-- **Git integration** - See which files are tracked/ignored
-
-### Git Integration
-
-```bash
-# Setup git hooks (optional)
-cargo crypt git setup
-
-# Encrypt before commit
-cargo crypt git pre-commit
-
-# Decrypt after checkout
-cargo crypt git post-checkout
-```
-
-## Configuration (Optional)
-
-While CargoCrypt works with zero configuration, you can customize behavior:
-
-```toml
-# .cargocrypt/config.toml (optional)
-[crypto]
-default_algorithm = "chacha20poly1305"
-key_derivation = "argon2id"
-
-[files]
-ignore_patterns = ["*.tmp", "target/"]
-auto_encrypt = ["src/secrets/"]
-
-[git]
-pre_commit_hook = true
-auto_decrypt = true
-```
-
-## Security
-
-### Cryptographic Choices
-
-- **Ring** - Industry-standard cryptographic library
-- **ChaCha20-Poly1305** - Default AEAD cipher (fast, secure)
-- **AES-256-GCM** - Alternative AEAD cipher (hardware accelerated)
-- **Ed25519** - Default signature algorithm
-- **Argon2id** - Key derivation function
-
-### Key Storage
-
-- **OS keychain integration** - Secure storage on macOS/Windows
-- **Environment variables** - For CI/CD environments
-- **File-based** - Encrypted key files with proper permissions
-- **Hardware tokens** - YubiKey support (planned)
-
-### Audit and Compliance
-
-- **Operation logging** - All crypto operations are logged
-- **Integrity verification** - Built-in file integrity checks
-- **Key rotation** - Easy key rotation with backward compatibility
-- **Compliance ready** - Supports SOC2, FIPS requirements
-
-## Performance
-
-CargoCrypt is optimized for speed:
-
-```bash
-# Benchmark on your machine
-cargo crypt benchmark
-
-# Typical performance (M1 MacBook Pro):
-# Encryption: 1.2 GB/s (ChaCha20-Poly1305)
-# Decryption: 1.4 GB/s (ChaCha20-Poly1305)
-# Key generation: 15ms (Ed25519)
-```
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development
-
-```bash
-# Clone and build
-git clone https://github.com/cargocrypt/cargocrypt
-cd cargocrypt
-cargo build
-
-# Run tests
 cargo test
-
-# Run integration tests
-cargo test --test integration
-
-# Benchmark
-cargo bench
 ```
 
-## License
+### Development Setup
 
-Licensed under either of:
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
+```bash
+# Install development dependencies
+cargo install cargo-watch cargo-nextest
+
+# Watch for changes
+cargo watch -x test
+
+# Fast testing
+cargo nextest run
+```
+
+## 🔒 Security
+
+CargoCrypt follows security best practices:
+
+- **Memory-safe Rust** implementation
+- **Audited cryptography** libraries (ChaCha20-Poly1305, Argon2)
+- **Automatic secret zeroization** 
+- **Constant-time operations** where possible
+- **Fail-secure defaults** throughout
+- **Regular security audits** and updates
+
+### Security Status
+
+```bash
+# Security audit (when implemented)
+cargo run -- doctor
+
+# Check for vulnerabilities
+cargo audit
+
+# Scan for secrets (using our own detection)
+cargo run -- scan --recursive
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please note this project is in early development.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and add tests
+4. Run the test suite: `cargo test`
+5. Commit your changes: `git commit -m 'Add amazing feature'`
+6. Push to the branch: `git push origin feature/amazing-feature`
+7. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
-## Inspiration
+## 🙏 Acknowledgments
 
-CargoCrypt draws inspiration from excellent Rust tools:
-- **cargo-audit** - Security-focused cargo subcommand
-- **ripgrep** - Fast, user-friendly search
-- **fd** - Simple, fast find alternative
-- **bat** - Cat with syntax highlighting
-- **exa** - Modern ls replacement
+- **RustyVault team** for inspiration and Rust cryptography leadership
+- **Ratatui community** for the excellent TUI framework
+- **Git-crypt and Transcrypt** for git integration patterns
+- **Rust cryptography ecosystem** for solid foundations
 
 ---
 
-**Zero config. Maximum security. Pure Rust performance.**
+**⚠️ This project is under active development. Use at your own risk for development/testing only.**
+
+**Built with ❤️ by the Rust community for secure, productive development.**
