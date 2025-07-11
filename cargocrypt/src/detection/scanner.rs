@@ -12,13 +12,14 @@ use crate::detection::{
 use crate::error::{CargoCryptError, CryptoResult};
 use ignore::{Walk, WalkBuilder};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
 /// Configuration for file scanning
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
     /// Maximum file size to scan (in bytes)
     pub max_file_size: u64,
@@ -335,7 +336,7 @@ impl FileScanner {
     }
 
     /// Scan content for secrets
-    fn scan_content(&self, content: &str, file_path: &Path) -> CryptoResult<Vec<Finding>> {
+    pub fn scan_content(&self, content: &str, file_path: &Path) -> CryptoResult<Vec<Finding>> {
         let mut findings = Vec::new();
 
         // 1. Pattern-based detection

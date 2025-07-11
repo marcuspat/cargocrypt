@@ -218,8 +218,11 @@ impl GitAttributes {
     
     /// Add default CargoCrypt patterns
     pub async fn add_cargocrypt_patterns(&mut self) -> GitResult<()> {
-        for (pattern, attribute) in &self.config.patterns {
-            self.add_pattern(pattern, attribute).await?;
+        let patterns: Vec<(String, String)> = self.config.patterns.clone()
+            .into_iter()
+            .collect();
+        for (pattern, attribute) in patterns {
+            self.add_pattern(&pattern, &attribute).await?;
         }
         
         Ok(())
@@ -410,7 +413,8 @@ impl GitAttributes {
             
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 && parts[1].contains("git-crypt") {
-                self.add_pattern(parts[0], &self.config.default_encrypt_attr).await?;
+                let attr = self.config.default_encrypt_attr.clone();
+                self.add_pattern(parts[0], &attr).await?;
             }
         }
         

@@ -13,6 +13,7 @@ use tokio::fs;
 use serde::{Deserialize, Serialize};
 use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
 use ring::rand::SystemRandom;
+use base64ct::{Base64, Encoding};
 
 /// Configuration for team key sharing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,7 +309,7 @@ impl TeamKeySharing {
         }
         
         // Generate a new key
-        let key_material = self.crypto.generate_key().await
+        let key_material = self.crypto.generate_key()
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to generate key: {}", e)))?;
         
         // Encrypt the key for each team member
@@ -477,38 +478,36 @@ impl TeamKeySharing {
     async fn encrypt_key_for_member(&self, key: &DerivedKey, member: &TeamMember) -> GitResult<String> {
         // For now, use a simple encryption scheme
         // In a real implementation, this would use the member's public key
-        let plaintext = PlaintextSecret::new(
-            base64ct::Base64::encode_string(key.key()), 
-            SecretType::EncryptionKey
-        );
+        let key_hex = key.to_hex();
+        let plaintext = PlaintextSecret::from_string(key_hex);
         
-        let encrypted = self.crypto.encrypt(&plaintext).await
+        let encrypted = self.crypto.encrypt_data(plaintext.as_bytes(), "team_key_password")
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt key: {}", e)))?;
         
         // Serialize to base64
         let serialized = bincode::serialize(&encrypted)
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize encrypted key: {}", e)))?;
         
-        Ok(base64ct::Base64::encode_string(&serialized))
+        Ok(Base64::encode_string(&serialized))
     }
     
     /// Decrypt a key for a specific team member
     async fn decrypt_key_for_member(&self, encrypted_key: &str, member: &TeamMember) -> GitResult<DerivedKey> {
         // Deserialize from base64
-        let serialized = base64ct::Base64::decode_vec(encrypted_key)
+        let serialized = Base64::decode_vec(encrypted_key)
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to decode encrypted key: {}", e)))?;
         
         let encrypted: EncryptedSecret = bincode::deserialize(&serialized)
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to deserialize encrypted key: {}", e)))?;
         
-        let decrypted = self.crypto.decrypt(&encrypted).await
+        let decrypted = self.crypto.decrypt_data(&encrypted, "team_key_password")
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to decrypt key: {}", e)))?;
         
-        // Convert back to DerivedKey
-        let key_bytes = base64ct::Base64::decode_vec(decrypted.value())
-            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to decode key bytes: {}", e)))?;
+        // Convert back to DerivedKey (assuming it was stored as hex)
+        let key_hex = String::from_utf8(decrypted)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to convert decrypted data: {}", e)))?;
         
-        DerivedKey::from_bytes(&key_bytes)
+        DerivedKey::from_hex(&key_hex)
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to create derived key: {}", e)))
     }
     

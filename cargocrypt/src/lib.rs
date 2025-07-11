@@ -75,9 +75,9 @@ pub async fn init() -> CryptoResult<()> {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn encrypt<P: AsRef<std::path::Path>>(path: P) -> CryptoResult<std::path::PathBuf> {
+pub async fn encrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> CryptoResult<std::path::PathBuf> {
     let crypt = CargoCrypt::new().await?;
-    crypt.encrypt_file(path).await
+    crypt.encrypt_file(path, password).await
 }
 
 /// Quick decrypt function for simple use cases
@@ -91,9 +91,9 @@ pub async fn encrypt<P: AsRef<std::path::Path>>(path: P) -> CryptoResult<std::pa
 /// # Ok(())
 /// # }
 /// ```
-pub async fn decrypt<P: AsRef<std::path::Path>>(path: P) -> CryptoResult<std::path::PathBuf> {
+pub async fn decrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> CryptoResult<std::path::PathBuf> {
     let crypt = CargoCrypt::new().await?;
-    crypt.decrypt_file(path).await
+    crypt.decrypt_file(path, password).await
 }
 
 /// Utility functions for common operations

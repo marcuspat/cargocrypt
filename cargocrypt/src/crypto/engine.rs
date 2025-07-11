@@ -164,10 +164,39 @@ impl CryptoEngine {
     pub fn performance_profile(&self) -> PerformanceProfile {
         self.performance_profile
     }
+    
+    /// Encrypt data with a password (convenience method)
+    pub fn encrypt_data(&self, data: &[u8], password: &str) -> CryptoResult<EncryptedSecret> {
+        self.encrypt_bytes(data, password, EncryptionOptions::default())
+    }
+    
+    /// Decrypt data with a password (convenience method) 
+    pub fn decrypt_data(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<Vec<u8>> {
+        self.decrypt_to_bytes(encrypted, password)
+    }
 
     /// Set the performance profile
     pub fn set_performance_profile(&mut self, profile: PerformanceProfile) {
         self.performance_profile = profile;
+    }
+    
+    /// Generate a new encryption key
+    pub fn generate_key(&self) -> CryptoResult<DerivedKey> {
+        let salt = SecureRandom::generate_salt()?;
+        let password = SecureRandom::generate_password(32)?;
+        self.derive_key(&password, &salt)
+    }
+    
+    /// Derive a key from password and salt
+    pub fn derive_key(&self, password: &str, salt: &[u8]) -> CryptoResult<DerivedKey> {
+        if salt.len() != defaults::SALT_LENGTH {
+            return Err(CryptoError::InvalidSalt { 
+                reason: format!("Salt must be {} bytes, got {}", defaults::SALT_LENGTH, salt.len())
+            });
+        }
+        let mut salt_array = [0u8; defaults::SALT_LENGTH];
+        salt_array.copy_from_slice(salt);
+        self.derive_key_with_profile(password, &salt_array, self.performance_profile)
     }
 
     /// Encrypt a string with a password
@@ -351,7 +380,7 @@ impl CryptoEngine {
     }
 
     /// Generate a secure random key for direct operations
-    pub fn generate_key() -> CryptoResult<Key> {
+    pub fn generate_random_key() -> CryptoResult<Key> {
         let key_bytes = SecureRandom::generate_bytes(defaults::KEY_LENGTH)?;
         Ok(*Key::from_slice(&key_bytes))
     }
@@ -410,13 +439,14 @@ impl CryptoEngine {
         salt: Option<&[u8; defaults::SALT_LENGTH]>,
     ) -> CryptoResult<EncryptedSecret> {
         let content = std::fs::read_to_string(file_path)
-            .map_err(|e| CryptoError::Io(e))?;
+            .map_err(|e| CryptoError::Generic { message: format!("Failed to read file: {}", e) })?;
         
         let plaintext = PlaintextSecret::from_string(content);
         let derived_key = if let Some(salt) = salt {
             self.derive_key_with_profile(password, salt, self.performance_profile)?
         } else {
-            self.derive_key(password)?
+            let salt = Self::generate_salt()?;
+            self.derive_key(password, &salt)?
         };
         
         EncryptedSecret::encrypt_with_key(plaintext, &derived_key, None)
@@ -428,9 +458,8 @@ impl CryptoEngine {
         encrypted: &EncryptedSecret,
         password: &str,
     ) -> CryptoResult<String> {
-        let derived_key = self.derive_key_with_salt(password, &encrypted.salt)?;
-        let plaintext = encrypted.decrypt_with_key(&derived_key)?;
-        Ok(plaintext.expose_secret().clone())
+        let plaintext = encrypted.decrypt_with_password(password)?;
+        plaintext.into_string()
     }
 }
 
@@ -564,7 +593,7 @@ mod tests {
         let engine = CryptoEngine::new();
         let plaintext = b"Direct encryption test";
         
-        let key = CryptoEngine::generate_key().unwrap();
+        let key = CryptoEngine::generate_random_key().unwrap();
         let nonce = CryptoEngine::generate_nonce().unwrap();
         
         let ciphertext = engine.encrypt_direct(plaintext, &key, &nonce).unwrap();

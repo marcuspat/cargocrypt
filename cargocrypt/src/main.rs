@@ -36,12 +36,16 @@ async fn main() -> CryptoResult<()> {
         }
         Commands::Encrypt { file } => {
             let crypt = CargoCrypt::new().await?;
-            let encrypted_file = crypt.encrypt_file(&file).await?;
+            // TODO: Prompt for password in real implementation
+            let password = "temporary_password"; 
+            let encrypted_file = crypt.encrypt_file(&file, password).await?;
             println!("✅ File encrypted: {}", encrypted_file.display());
         }
         Commands::Decrypt { file } => {
             let crypt = CargoCrypt::new().await?;
-            let decrypted_file = crypt.decrypt_file(&file).await?;
+            // TODO: Prompt for password in real implementation
+            let password = "temporary_password";
+            let decrypted_file = crypt.decrypt_file(&file, password).await?;
             println!("✅ File decrypted: {}", decrypted_file.display());
         }
         Commands::Config => {

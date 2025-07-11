@@ -25,7 +25,7 @@ pub use team::{TeamKeySharing, TeamMember, KeyShareConfig};
 pub use ignore::{GitIgnoreManager, IgnorePattern, IgnoreConfig};
 pub use config::{GitCryptConfig, RepositorySetup, IntegrationMode};
 
-use crate::crypto::{CryptoEngine, CryptoResult};
+use crate::crypto::{CryptoEngine, CryptoResult, EncryptedSecret};
 use crate::error::CargoCryptError;
 use git2::{Repository, Signature, ObjectType, Oid};
 use std::path::{Path, PathBuf};
@@ -60,6 +60,15 @@ pub enum GitError {
     
     #[error("Crypto operation failed: {0}")]
     Crypto(#[from] crate::crypto::CryptoError),
+    
+    #[error("IO operation failed: {0}")]
+    Io(#[from] std::io::Error),
+    
+    #[error("Serialization failed: {0}")]
+    SerializationFailed(String),
+    
+    #[error("Git repo operation failed: {0}")]
+    Repo(#[from] GitRepoError),
 }
 
 pub type GitResult<T> = Result<T, GitError>;
@@ -208,12 +217,29 @@ impl GitIntegration {
     }
     
     /// Encrypt a file and store it in git with proper patterns
-    pub async fn encrypt_and_stage<P: AsRef<Path>>(&self, path: P) -> GitResult<PathBuf> {
+    pub async fn encrypt_and_stage<P: AsRef<Path>>(&self, path: P, password: &str) -> GitResult<PathBuf> {
         let path = path.as_ref();
         
-        // Encrypt the file
-        let encrypted_path = self.crypto.encrypt_file(path).await
+        // Read the file content
+        let content = tokio::fs::read(path).await
+            .map_err(|e| GitError::Io(e))?;
+        
+        // Encrypt the data
+        let encrypted = self.crypto.encrypt_data(&content, password)
             .map_err(GitError::Crypto)?;
+        
+        // Create encrypted file path
+        let encrypted_path = path.with_extension(format!("{}.enc", 
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+        ));
+        
+        // Write encrypted data to file
+        let encrypted_bytes = bincode::serialize(&encrypted)
+            .map_err(|e| GitError::SerializationFailed(format!("Failed to serialize: {}", e)))?;
+        tokio::fs::write(&encrypted_path, encrypted_bytes).await
+            .map_err(|e| GitError::Io(e))?;
         
         // Stage the encrypted file
         self.repo.stage_file(&encrypted_path).await?;
@@ -227,9 +253,31 @@ impl GitIntegration {
     }
     
     /// Decrypt a file from git storage
-    pub async fn decrypt_from_git<P: AsRef<Path>>(&self, encrypted_path: P) -> GitResult<PathBuf> {
-        let decrypted_path = self.crypto.decrypt_file(encrypted_path).await
+    pub async fn decrypt_from_git<P: AsRef<Path>>(&self, encrypted_path: P, password: &str) -> GitResult<PathBuf> {
+        let encrypted_path = encrypted_path.as_ref();
+        
+        // Read encrypted file
+        let encrypted_data = tokio::fs::read(encrypted_path).await
+            .map_err(|e| GitError::Io(e))?;
+        
+        // Deserialize encrypted data
+        let encrypted: EncryptedSecret = bincode::deserialize(&encrypted_data)
+            .map_err(|e| GitError::SerializationFailed(format!("Failed to deserialize: {}", e)))?;
+        
+        // Decrypt the data
+        let decrypted_data = self.crypto.decrypt_data(&encrypted, password)
             .map_err(GitError::Crypto)?;
+        
+        // Create decrypted file path (remove .enc extension)
+        let decrypted_path = if let Some(stem) = encrypted_path.file_stem() {
+            encrypted_path.with_file_name(stem)
+        } else {
+            encrypted_path.with_extension("decrypted")
+        };
+        
+        // Write decrypted data to file
+        tokio::fs::write(&decrypted_path, decrypted_data).await
+            .map_err(|e| GitError::Io(e))?;
         
         Ok(decrypted_path)
     }

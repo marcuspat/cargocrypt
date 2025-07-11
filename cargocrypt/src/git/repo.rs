@@ -154,10 +154,17 @@ impl GitRepo {
         
         // Check if file exists in HEAD
         match head_tree.get_path(&relative_path) {
-            Ok(entry) => {
+            Ok(_) => {
                 // File exists in HEAD, reset to that version
-                let object = self.repo.find_object(entry.id(), Some(ObjectType::Blob))?;
-                index.add_frombuffer(&relative_path, object.as_blob().unwrap().content())?;
+                // We'll just remove it from index and re-add from working directory
+                index.remove_path(&relative_path)?;
+                // Check if file exists in working directory
+                let workdir = self.repo.workdir().ok_or_else(|| 
+                    GitRepoError::InvalidState("No working directory found".to_string()))?;
+                let full_path = workdir.join(&relative_path);
+                if full_path.exists() {
+                    index.add_path(&relative_path)?;
+                }
             }
             Err(_) => {
                 // File doesn't exist in HEAD, remove from index
