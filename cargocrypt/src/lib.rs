@@ -28,20 +28,24 @@
 pub use crate::core::{CargoCrypt, CryptoConfig};
 pub use crate::crypto::{
     CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret, 
-    SecretMetadata, SecretType, PerformanceProfile, EncryptionOptions,
+    SecretMetadata, SecretType as CryptoSecretType, PerformanceProfile, EncryptionOptions,
     CryptoError, CryptoResult as CryptoCoreResult
 };
 pub use crate::error::{CargoCryptError, ErrorKind, CryptoResult};
+pub use crate::detection::{
+    SecretDetector, ScanOptions, DetectionConfig, Finding, FoundSecret,
+    SecretType as DetectionSecretType, PatternMatch, EntropyResult, CustomRule, RuleEngine,
+};
 
 // Core modules
 pub mod core;
 pub mod crypto;
 pub mod error;
 
-// Feature modules (TODO: implement these)
+// Feature modules
 // pub mod auth;
-// pub mod detection;
-// pub mod git;
+pub mod detection;
+pub mod git;
 // pub mod providers;
 // pub mod tui;
 
