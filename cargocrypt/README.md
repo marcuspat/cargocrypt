@@ -11,19 +11,19 @@ CargoCrypt brings enterprise-grade cryptography to your Rust workflow with zero 
 cargo install cargocrypt
 
 # Initialize in your project (zero config!)
-cargo crypt init
+cargocrypt init
 
 # Encrypt sensitive files
-cargo crypt encrypt src/secrets.rs
+cargocrypt encrypt src/secrets.rs
 
 # Decrypt when needed
-cargo crypt decrypt src/secrets.rs
+cargocrypt decrypt src/secrets.rs
 
 # Generate secure keys
-cargo crypt keygen --type ed25519
+cargocrypt keygen --type ed25519
 
 # Interactive TUI mode
-cargo crypt tui
+cargocrypt tui
 ```
 
 ## Features
@@ -85,44 +85,44 @@ Download from [GitHub Releases](https://github.com/cargocrypt/cargocrypt/release
 
 ```bash
 # Initialize project (creates .cargocrypt/ if needed)
-cargo crypt init
+cargocrypt init
 
 # Encrypt files or directories
-cargo crypt encrypt src/api_keys.rs
-cargo crypt encrypt config/
+cargocrypt encrypt src/api_keys.rs
+cargocrypt encrypt config/
 
 # Decrypt files
-cargo crypt decrypt src/api_keys.rs.enc
+cargocrypt decrypt src/api_keys.rs.enc
 
 # List encrypted files
-cargo crypt list
+cargocrypt list
 
 # Verify integrity
-cargo crypt verify
+cargocrypt verify
 ```
 
 ### Key Management
 
 ```bash
 # Generate new keys
-cargo crypt keygen --algorithm ed25519
-cargo crypt keygen --algorithm rsa4096
+cargocrypt keygen --algorithm ed25519
+cargocrypt keygen --algorithm rsa4096
 
 # Import existing keys
-cargo crypt key import --file key.pem
+cargocrypt key import --file key.pem
 
 # Export public keys
-cargo crypt key export --public --format pem
+cargocrypt key export --public --format pem
 
 # Rotate keys
-cargo crypt key rotate --backup
+cargocrypt key rotate --backup
 ```
 
 ### Interactive Mode
 
 ```bash
 # Launch TUI
-cargo crypt tui
+cargocrypt tui
 ```
 
 The TUI provides:
@@ -135,13 +135,13 @@ The TUI provides:
 
 ```bash
 # Setup git hooks (optional)
-cargo crypt git setup
+cargocrypt git setup
 
 # Encrypt before commit
-cargo crypt git pre-commit
+cargocrypt git pre-commit
 
 # Decrypt after checkout
-cargo crypt git post-checkout
+cargocrypt git post-checkout
 ```
 
 ## Configuration (Optional)
@@ -193,7 +193,7 @@ CargoCrypt is optimized for speed:
 
 ```bash
 # Benchmark on your machine
-cargo crypt benchmark
+cargocrypt benchmark
 
 # Typical performance (M1 MacBook Pro):
 # Encryption: 1.2 GB/s (ChaCha20-Poly1305)
