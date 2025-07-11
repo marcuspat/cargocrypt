@@ -28,10 +28,28 @@ pub enum GitRepoError {
 pub type GitRepoResult<T> = Result<T, GitRepoError>;
 
 /// Git repository wrapper with CargoCrypt-specific functionality
-#[derive(Debug, Clone)]
 pub struct GitRepo {
     repo: Repository,
     workdir: PathBuf,
+}
+
+impl Clone for GitRepo {
+    fn clone(&self) -> Self {
+        // Re-open the repository from the working directory
+        let repo = Repository::open(&self.workdir).expect("Failed to re-open repository");
+        Self {
+            repo,
+            workdir: self.workdir.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for GitRepo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitRepo")
+            .field("workdir", &self.workdir)
+            .finish()
+    }
 }
 
 impl GitRepo {

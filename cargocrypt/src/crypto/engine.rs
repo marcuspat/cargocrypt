@@ -341,6 +341,15 @@ impl CryptoEngine {
         Ok(DerivedKey::from_password_with_salt(password, salt)?)
     }
 
+    /// Derive a key with a specific salt
+    pub fn derive_key_with_salt(
+        &self,
+        password: &str,
+        salt: &[u8; defaults::SALT_LENGTH],
+    ) -> CryptoResult<DerivedKey> {
+        self.derive_key_with_profile(password, salt, self.performance_profile)
+    }
+
     /// Generate a secure random key for direct operations
     pub fn generate_key() -> CryptoResult<Key> {
         let key_bytes = SecureRandom::generate_bytes(defaults::KEY_LENGTH)?;
@@ -391,6 +400,37 @@ impl CryptoEngine {
             total_ms: total_duration.as_millis() as f64,
             data_size: test_data.len(),
         })
+    }
+
+    /// Encrypt a file with derived key
+    pub fn encrypt_file<P: AsRef<std::path::Path>>(
+        &self,
+        file_path: P,
+        password: &str,
+        salt: Option<&[u8; defaults::SALT_LENGTH]>,
+    ) -> CryptoResult<EncryptedSecret> {
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| CryptoError::Io(e))?;
+        
+        let plaintext = PlaintextSecret::from_string(content);
+        let derived_key = if let Some(salt) = salt {
+            self.derive_key_with_profile(password, salt, self.performance_profile)?
+        } else {
+            self.derive_key(password)?
+        };
+        
+        EncryptedSecret::encrypt_with_key(plaintext, &derived_key, None)
+    }
+
+    /// Decrypt a file with derived key
+    pub fn decrypt_file(
+        &self,
+        encrypted: &EncryptedSecret,
+        password: &str,
+    ) -> CryptoResult<String> {
+        let derived_key = self.derive_key_with_salt(password, &encrypted.salt)?;
+        let plaintext = encrypted.decrypt_with_key(&derived_key)?;
+        Ok(plaintext.expose_secret().clone())
     }
 }
 
