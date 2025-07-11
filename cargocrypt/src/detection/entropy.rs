@@ -426,7 +426,7 @@ mod tests {
         
         // Should detect as likely secret
         assert!(analyzer.analyze("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY").is_likely_secret);
-        assert!(analyzer.analyze("sk_test_26PHem9AhJZvU623DfE1x4sd").is_likely_secret);
+        assert!(analyzer.analyze("sk_test_FAKE1234567890ABCDEF").is_likely_secret);
         
         // Should not detect as secret
         assert!(!analyzer.analyze("hello_world_example").is_likely_secret);

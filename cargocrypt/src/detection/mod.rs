@@ -116,7 +116,7 @@ mod tests {
         // High entropy strings (likely secrets)
         assert!(is_likely_secret("AKIAIOSFODNN7EXAMPLE"));
         assert!(is_likely_secret("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"));
-        assert!(is_likely_secret("sk_test_26PHem9AhJZvU623DfE1x4sd"));
+        assert!(is_likely_secret("sk_test_FAKE1234567890ABCDEF"));
         
         // Low entropy strings (unlikely to be secrets)
         assert!(!is_likely_secret("hello_world"));
