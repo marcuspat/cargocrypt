@@ -79,6 +79,11 @@ impl PlaintextSecret {
         Self { data }
     }
 
+    /// Create a new plaintext secret from bytes
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+
     /// Create a new plaintext secret from a string
     pub fn from_string(data: String) -> Self {
         Self {

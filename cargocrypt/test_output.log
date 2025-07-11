@@ -1,0 +1,580 @@
+   Compiling cargocrypt v0.1.0 (/workspaces/cargocrypt/cargocrypt)
+warning: unused imports: `Algorithm`, `PasswordHash`, `PasswordHasher`, and `Version`
+ --> src/crypto/keys.rs:4:30
+  |
+4 | use argon2::{Argon2, Params, Algorithm, Version, PasswordHash, PasswordHasher, PasswordVerifier};
+  |                              ^^^^^^^^^  ^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Zeroize`
+ --> src/crypto/secrets.rs:6:15
+  |
+6 | use zeroize::{Zeroize, ZeroizeOnDrop};
+  |               ^^^^^^^
+
+warning: unused import: `std::fmt`
+ --> src/error.rs:6:5
+  |
+6 | use std::fmt;
+  |     ^^^^^^^^
+
+warning: unused imports: `EntropyResult` and `PatternMatch`
+ --> src/detection/rules.rs:6:36
+  |
+6 | use crate::detection::{SecretType, PatternMatch, EntropyResult};
+  |                                    ^^^^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `Walk`
+  --> src/detection/scanner.rs:13:14
+   |
+13 | use ignore::{Walk, WalkBuilder};
+   |              ^^^^
+
+warning: unused import: `tempfile::TempDir`
+   --> src/detection/scanner.rs:580:9
+    |
+580 |     use tempfile::TempDir;
+    |         ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::fs`
+   --> src/detection/scanner.rs:581:9
+    |
+581 |     use std::fs;
+    |         ^^^^^^^
+
+warning: unused import: `CargoCryptError`
+  --> src/detection/mod.rs:52:20
+   |
+52 | use crate::error::{CargoCryptError, CryptoResult};
+   |                    ^^^^^^^^^^^^^^^
+
+warning: unused imports: `GitError` and `GitResult`
+ --> src/git/repo.rs:6:13
+  |
+6 | use super::{GitError, GitResult};
+  |             ^^^^^^^^  ^^^^^^^^^
+
+warning: unused imports: `IndexAddOption`, `Index`, and `ObjectType`
+ --> src/git/repo.rs:7:24
+  |
+7 | use git2::{Repository, Index, IndexAddOption, Status, StatusOptions, Signature, Oid, ObjectType};
+  |                        ^^^^^  ^^^^^^^^^^^^^^                                         ^^^^^^^^^^
+
+warning: unused import: `Stdio`
+  --> src/git/hooks.rs:11:29
+   |
+11 | use std::process::{Command, Stdio};
+   |                             ^^^^^
+
+warning: unused import: `std::fs::File`
+   --> src/git/attributes.rs:444:9
+    |
+444 |     use std::fs::File;
+    |         ^^^^^^^^^^^^^
+
+warning: unused import: `std::io::Write`
+   --> src/git/attributes.rs:445:9
+    |
+445 |     use std::io::Write;
+    |         ^^^^^^^^^^^^^^
+
+warning: unused imports: `CryptoResult`, `PlaintextSecret`, and `SecretMetadata`
+ --> src/git/storage.rs:8:52
+  |
+8 | use crate::crypto::{CryptoEngine, EncryptedSecret, PlaintextSecret, SecretMetadata, CryptoResult};
+  |                                                    ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `Blob`, `Repository`, `TreeBuilder`, and `Tree`
+ --> src/git/storage.rs:9:12
+  |
+9 | use git2::{Repository, Oid, ObjectType, Blob, Tree, TreeBuilder, Signature};
+  |            ^^^^^^^^^^                   ^^^^  ^^^^  ^^^^^^^^^^^
+
+warning: unused import: `PathBuf`
+  --> src/git/storage.rs:11:23
+   |
+11 | use std::path::{Path, PathBuf};
+   |                       ^^^^^^^
+
+warning: unused imports: `Base64` and `Encoding`
+  --> src/git/storage.rs:14:16
+   |
+14 | use base64ct::{Base64, Encoding};
+   |                ^^^^^^  ^^^^^^^^
+
+warning: unused import: `std::io::prelude::*`
+   --> src/git/storage.rs:354:13
+    |
+354 |         use std::io::prelude::*;
+    |             ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CryptoResult` and `SecretType`
+ --> src/git/team.rs:8:81
+  |
+8 | use crate::crypto::{CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret, SecretType, CryptoResult};
+  |                                                                                 ^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `Oid` and `Repository`
+ --> src/git/team.rs:9:12
+  |
+9 | use git2::{Repository, Oid, Signature};
+  |            ^^^^^^^^^^  ^^^
+
+warning: unused import: `Path`
+  --> src/git/team.rs:11:17
+   |
+11 | use std::path::{Path, PathBuf};
+   |                 ^^^^
+
+warning: unused imports: `ED25519`, `Ed25519KeyPair`, and `UnparsedPublicKey`
+  --> src/git/team.rs:14:23
+   |
+14 | use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
+   |                       ^^^^^^^^^^^^^^           ^^^^^^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `ring::digest`
+   --> src/git/team.rs:470:13
+    |
+470 |         use ring::digest;
+    |             ^^^^^^^^^^^^
+
+warning: unused import: `std::fs::File`
+   --> src/git/ignore.rs:417:9
+    |
+417 |     use std::fs::File;
+    |         ^^^^^^^^^^^^^
+
+warning: unused import: `std::io::Write`
+   --> src/git/ignore.rs:418:9
+    |
+418 |     use std::io::Write;
+    |         ^^^^^^^^^^^^^^
+
+warning: unused imports: `PathBuf` and `Path`
+ --> src/git/config.rs:7:17
+  |
+7 | use std::path::{Path, PathBuf};
+  |                 ^^^^  ^^^^^^^
+
+warning: unused import: `CryptoResult`
+  --> src/git/mod.rs:28:35
+   |
+28 | use crate::crypto::{CryptoEngine, CryptoResult, EncryptedSecret};
+   |                                   ^^^^^^^^^^^^
+
+warning: unused import: `crate::error::CargoCryptError`
+  --> src/git/mod.rs:29:5
+   |
+29 | use crate::error::CargoCryptError;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ObjectType` and `Oid`
+  --> src/git/mod.rs:30:35
+   |
+30 | use git2::{Repository, Signature, ObjectType, Oid};
+   |                                   ^^^^^^^^^^  ^^^
+
+warning: unused variable: `git_config`
+   --> src/git/attributes.rs:232:43
+    |
+232 |     pub async fn configure_filters(&self, git_config: &GitCryptConfig) -> GitResult<()> {
+    |                                           ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_git_config`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `commit_oid`
+   --> src/git/storage.rs:108:13
+    |
+108 |         let commit_oid = git_repo.commit(
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_commit_oid`
+
+warning: variable does not need to be mutable
+   --> src/git/storage.rs:103:13
+    |
+103 |         let mut tree_builder = git_repo.treebuilder(None)?;
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `new_key`
+   --> src/git/team.rs:378:17
+    |
+378 |             let new_key = self.generate_shared_key(&key.metadata.purpose, "system").await?;
+    |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_new_key`
+
+warning: unused variable: `member`
+   --> src/git/team.rs:478:62
+    |
+478 |     async fn encrypt_key_for_member(&self, key: &DerivedKey, member: &TeamMember) -> GitResult<String> {
+    |                                                              ^^^^^^ help: if this is intentional, prefix it with an underscore: `_member`
+
+warning: unused variable: `member`
+   --> src/git/team.rs:495:65
+    |
+495 |     async fn decrypt_key_for_member(&self, encrypted_key: &str, member: &TeamMember) -> GitResult<DerivedKey> {
+    |                                                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_member`
+
+warning: unused variable: `new_member`
+   --> src/git/team.rs:515:51
+    |
+515 |     async fn reencrypt_keys_for_new_member(&self, new_member: &TeamMember) -> GitResult<()> {
+    |                                                   ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_new_member`
+
+warning: unused variable: `existing_encrypted_key`
+   --> src/git/team.rs:520:29
+    |
+520 |             if let Some((_, existing_encrypted_key)) = shared_key.encrypted_for_members.iter().next() {
+    |                             ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_existing_encrypted_key`
+
+warning: variable does not need to be mutable
+   --> src/git/team.rs:518:13
+    |
+518 |         for mut shared_key in shared_keys {
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/git/team.rs:577:13
+    |
+577 |         let mut tree_builder = git_repo.treebuilder(None)?;
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+error[E0061]: this function takes 1 argument but 2 arguments were supplied
+   --> src/git/storage.rs:567:25
+    |
+567 |         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+    |                         ^^^^^^^^^^^^^^^^^^^^                            ------------------ unexpected argument #2 of type `secrets::SecretType`
+    |
+note: expected `Vec<u8>`, found `String`
+   --> src/git/storage.rs:567:46
+    |
+567 |         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: expected struct `Vec<u8>`
+               found struct `std::string::String`
+note: associated function defined here
+   --> src/crypto/secrets.rs:83:12
+    |
+83  |     pub fn new(data: Vec<u8>) -> Self {
+    |            ^^^ -------------
+help: call `Into::into` on this expression to convert `std::string::String` into `Vec<u8>`
+    |
+567 |         let plaintext = PlaintextSecret::new("test-secret".to_string().into(), SecretType::ApiKey);
+    |                                                                       +++++++
+help: remove the extra argument
+    |
+567 -         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+567 +         let plaintext = PlaintextSecret::new(/* Vec<u8> */);
+    |
+
+error[E0061]: this method takes 3 arguments but 1 argument was supplied
+   --> src/git/storage.rs:568:32
+    |
+568 |         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                ^^^^^^^------------
+    |                                       ||
+    |                                       |expected `PlaintextSecret`, found `&PlaintextSecret`
+    |                                       two arguments of type `&str` and `engine::EncryptionOptions` are missing
+    |
+note: method defined here
+   --> src/crypto/engine.rs:225:12
+    |
+225 |     pub fn encrypt(
+    |            ^^^^^^^
+226 |         &self,
+227 |         plaintext: PlaintextSecret,
+    |         --------------------------
+228 |         password: &str,
+    |         --------------
+229 |         options: EncryptionOptions,
+    |         --------------------------
+help: consider removing the borrow
+    |
+568 -         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+568 +         let encrypted = crypto.encrypt(plaintext).await.unwrap();
+    |
+help: provide the arguments
+    |
+568 -         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+568 +         let encrypted = crypto.encrypt(/* secrets::PlaintextSecret */, /* &str */, /* engine::EncryptionOptions */).await.unwrap();
+    |
+
+error[E0277]: `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+   --> src/git/storage.rs:568:52
+    |
+568 |         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                                   -^^^^^
+    |                                                   ||
+    |                                                   |`Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+    |                                                   help: remove the `.await`
+    |
+    = help: the trait `Future` is not implemented for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>`
+    = note: Result<secrets::EncryptedSecret, crypto::errors::CryptoError> must be a future or must implement `IntoFuture` to be awaited
+    = note: required for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` to implement `IntoFuture`
+
+error[E0061]: this method takes 2 arguments but 1 argument was supplied
+   --> src/git/storage.rs:578:32
+    |
+578 |         let decrypted = crypto.decrypt(&retrieved).await.unwrap();
+    |                                ^^^^^^^------------ argument #2 of type `&str` is missing
+    |
+note: method defined here
+   --> src/crypto/engine.rs:259:12
+    |
+259 |     pub fn decrypt(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<PlaintextSecret> {
+    |            ^^^^^^^                                     --------------
+help: provide the argument
+    |
+578 |         let decrypted = crypto.decrypt(&retrieved, /* &str */).await.unwrap();
+    |                                                  ++++++++++++
+
+error[E0277]: `Result<secrets::PlaintextSecret, crypto::errors::CryptoError>` is not a future
+   --> src/git/storage.rs:578:52
+    |
+578 |         let decrypted = crypto.decrypt(&retrieved).await.unwrap();
+    |                                                   -^^^^^
+    |                                                   ||
+    |                                                   |`Result<secrets::PlaintextSecret, crypto::errors::CryptoError>` is not a future
+    |                                                   help: remove the `.await`
+    |
+    = help: the trait `Future` is not implemented for `Result<secrets::PlaintextSecret, crypto::errors::CryptoError>`
+    = note: Result<secrets::PlaintextSecret, crypto::errors::CryptoError> must be a future or must implement `IntoFuture` to be awaited
+    = note: required for `Result<secrets::PlaintextSecret, crypto::errors::CryptoError>` to implement `IntoFuture`
+
+error[E0599]: no method named `value` found for struct `secrets::PlaintextSecret` in the current scope
+   --> src/git/storage.rs:579:49
+    |
+579 |         assert_eq!(decrypted.value(), plaintext.value());
+    |                                                 ^^^^^ method not found in `PlaintextSecret`
+    |
+   ::: src/crypto/secrets.rs:71:1
+    |
+71  | pub struct PlaintextSecret {
+    | -------------------------- method `value` not found for this struct
+    |
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `value`, perhaps you need to implement one of them:
+            candidate #1: `toml_write::write::TomlWrite`
+            candidate #2: `winnow::parser::Parser`
+
+error[E0308]: mismatched types
+   --> src/git/storage.rs:593:50
+    |
+593 |             let plaintext = PlaintextSecret::new(format!("secret-{}", i), SecretType::ApiKey);
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^ expected `Vec<u8>`, found `String`
+    |
+    = note: expected struct `Vec<u8>`
+               found struct `std::string::String`
+    = note: this error originates in the macro `format` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: call `Into::into` on this expression to convert `std::string::String` into `Vec<u8>`
+    |
+593 |             let plaintext = PlaintextSecret::new(format!("secret-{}", i).into(), SecretType::ApiKey);
+    |                                                                         +++++++
+
+error[E0061]: this function takes 1 argument but 2 arguments were supplied
+   --> src/git/storage.rs:593:29
+    |
+593 |             let plaintext = PlaintextSecret::new(format!("secret-{}", i), SecretType::ApiKey);
+    |                             ^^^^^^^^^^^^^^^^^^^^                          ------------------ unexpected argument #2 of type `secrets::SecretType`
+    |
+note: associated function defined here
+   --> src/crypto/secrets.rs:83:12
+    |
+83  |     pub fn new(data: Vec<u8>) -> Self {
+    |            ^^^
+help: remove the extra argument
+    |
+593 -             let plaintext = PlaintextSecret::new(format!("secret-{}", i), SecretType::ApiKey);
+593 +             let plaintext = PlaintextSecret::new(format!("secret-{}", i));
+    |
+
+error[E0061]: this method takes 3 arguments but 1 argument was supplied
+   --> src/git/storage.rs:594:36
+    |
+594 |             let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                    ^^^^^^^------------
+    |                                           ||
+    |                                           |expected `PlaintextSecret`, found `&PlaintextSecret`
+    |                                           two arguments of type `&str` and `engine::EncryptionOptions` are missing
+    |
+note: method defined here
+   --> src/crypto/engine.rs:225:12
+    |
+225 |     pub fn encrypt(
+    |            ^^^^^^^
+226 |         &self,
+227 |         plaintext: PlaintextSecret,
+    |         --------------------------
+228 |         password: &str,
+    |         --------------
+229 |         options: EncryptionOptions,
+    |         --------------------------
+help: consider removing the borrow
+    |
+594 -             let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+594 +             let encrypted = crypto.encrypt(plaintext).await.unwrap();
+    |
+help: provide the arguments
+    |
+594 -             let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+594 +             let encrypted = crypto.encrypt(/* secrets::PlaintextSecret */, /* &str */, /* engine::EncryptionOptions */).await.unwrap();
+    |
+
+error[E0277]: `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+   --> src/git/storage.rs:594:56
+    |
+594 |             let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                                       -^^^^^
+    |                                                       ||
+    |                                                       |`Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+    |                                                       help: remove the `.await`
+    |
+    = help: the trait `Future` is not implemented for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>`
+    = note: Result<secrets::EncryptedSecret, crypto::errors::CryptoError> must be a future or must implement `IntoFuture` to be awaited
+    = note: required for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` to implement `IntoFuture`
+
+error[E0061]: this function takes 1 argument but 2 arguments were supplied
+   --> src/git/storage.rs:614:25
+    |
+614 |         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+    |                         ^^^^^^^^^^^^^^^^^^^^                            ------------------ unexpected argument #2 of type `secrets::SecretType`
+    |
+note: expected `Vec<u8>`, found `String`
+   --> src/git/storage.rs:614:46
+    |
+614 |         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: expected struct `Vec<u8>`
+               found struct `std::string::String`
+note: associated function defined here
+   --> src/crypto/secrets.rs:83:12
+    |
+83  |     pub fn new(data: Vec<u8>) -> Self {
+    |            ^^^ -------------
+help: call `Into::into` on this expression to convert `std::string::String` into `Vec<u8>`
+    |
+614 |         let plaintext = PlaintextSecret::new("test-secret".to_string().into(), SecretType::ApiKey);
+    |                                                                       +++++++
+help: remove the extra argument
+    |
+614 -         let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
+614 +         let plaintext = PlaintextSecret::new(/* Vec<u8> */);
+    |
+
+error[E0061]: this method takes 3 arguments but 1 argument was supplied
+   --> src/git/storage.rs:615:32
+    |
+615 |         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                ^^^^^^^------------
+    |                                       ||
+    |                                       |expected `PlaintextSecret`, found `&PlaintextSecret`
+    |                                       two arguments of type `&str` and `engine::EncryptionOptions` are missing
+    |
+note: method defined here
+   --> src/crypto/engine.rs:225:12
+    |
+225 |     pub fn encrypt(
+    |            ^^^^^^^
+226 |         &self,
+227 |         plaintext: PlaintextSecret,
+    |         --------------------------
+228 |         password: &str,
+    |         --------------
+229 |         options: EncryptionOptions,
+    |         --------------------------
+help: consider removing the borrow
+    |
+615 -         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+615 +         let encrypted = crypto.encrypt(plaintext).await.unwrap();
+    |
+help: provide the arguments
+    |
+615 -         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+615 +         let encrypted = crypto.encrypt(/* secrets::PlaintextSecret */, /* &str */, /* engine::EncryptionOptions */).await.unwrap();
+    |
+
+error[E0277]: `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+   --> src/git/storage.rs:615:52
+    |
+615 |         let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+    |                                                   -^^^^^
+    |                                                   ||
+    |                                                   |`Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` is not a future
+    |                                                   help: remove the `.await`
+    |
+    = help: the trait `Future` is not implemented for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>`
+    = note: Result<secrets::EncryptedSecret, crypto::errors::CryptoError> must be a future or must implement `IntoFuture` to be awaited
+    = note: required for `Result<secrets::EncryptedSecret, crypto::errors::CryptoError>` to implement `IntoFuture`
+
+warning: unused import: `KeyPair`
+  --> src/git/team.rs:14:39
+   |
+14 | use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
+   |                                       ^^^^^^^
+
+warning: unused import: `PasswordVerifier`
+ --> src/crypto/keys.rs:4:80
+  |
+4 | use argon2::{Argon2, Params, Algorithm, Version, PasswordHash, PasswordHasher, PasswordVerifier};
+  |                                                                                ^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/core.rs:648:13
+    |
+648 |         let mut secret = SecretBytes::from_str("sensitive-data");
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `key`
+   --> src/crypto/engine.rs:365:13
+    |
+365 |         let key = Key::from_slice(&key_bytes).clone();
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_key`
+
+warning: unused variable: `name`
+  --> src/detection/patterns.rs:93:32
+   |
+93 |             SecretType::Custom(name) => "Custom Pattern",
+   |                                ^^^^ help: if this is intentional, prefix it with an underscore: `_name`
+
+warning: unused variable: `scanner`
+   --> src/detection/scanner.rs:597:13
+    |
+597 |         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_scanner`
+
+warning: unused variable: `config`
+   --> src/git/hooks.rs:454:31
+    |
+454 |     fn generate_script(&self, config: &HookConfig) -> GitResult<String> {
+    |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `config`
+   --> src/git/hooks.rs:504:31
+    |
+504 |     fn generate_script(&self, config: &HookConfig) -> GitResult<String> {
+    |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `repo`
+   --> src/git/mod.rs:335:13
+    |
+335 |         let repo = Repository::open(repo_path)?;
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_repo`
+
+warning: unused variable: `file_path`
+   --> src/git/mod.rs:334:57
+    |
+334 |     pub fn should_encrypt<P: AsRef<Path>>(repo_path: P, file_path: P) -> GitResult<bool> {
+    |                                                         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_file_path`
+
+Some errors have detailed explanations: E0061, E0277, E0308, E0599.
+For more information about an error, try `rustc --explain E0061`.
+warning: `cargocrypt` (lib test) generated 49 warnings
+error: could not compile `cargocrypt` (lib test) due to 13 previous errors; 49 warnings emitted

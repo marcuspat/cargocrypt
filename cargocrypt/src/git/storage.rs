@@ -5,7 +5,7 @@
 //! It supports git-native patterns for storing and retrieving encrypted data.
 
 use super::{GitRepo, GitError, GitResult};
-use crate::crypto::{CryptoEngine, EncryptedSecret, PlaintextSecret, SecretMetadata, CryptoResult};
+use crate::crypto::{CryptoEngine, EncryptedSecret, PlaintextSecret, SecretMetadata, CryptoResult, EncryptionOptions};
 use git2::{Repository, Oid, ObjectType, Blob, Tree, TreeBuilder, Signature};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -151,7 +151,7 @@ impl EncryptedStorage {
                 .unwrap()
                 .as_secs(),
             checksum: self.calculate_checksum(&final_data),
-            algorithm: encrypted_secret.metadata().algorithm.clone(),
+            algorithm: "ChaCha20-Poly1305".to_string(), // CargoCrypt always uses ChaCha20-Poly1305
             compressed: self.config.compress,
         };
         
@@ -564,8 +564,8 @@ mod tests {
         storage.initialize().await.unwrap();
         
         // Create test secret
-        let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
-        let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+        let plaintext = PlaintextSecret::new("test-secret".as_bytes().to_vec());
+        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
         
         // Store in git
         let file_path = Path::new("test.secret");
@@ -575,8 +575,8 @@ mod tests {
         let retrieved = storage.retrieve(&storage_ref).await.unwrap();
         
         // Decrypt and verify
-        let decrypted = crypto.decrypt(&retrieved).await.unwrap();
-        assert_eq!(decrypted.value(), plaintext.value());
+        let decrypted = crypto.decrypt(&retrieved, "test_password").unwrap();
+        assert_eq!(decrypted.as_bytes(), b"test-secret");
     }
     
     #[tokio::test]
@@ -590,9 +590,10 @@ mod tests {
         
         // Store multiple files
         for i in 0..3 {
-            let plaintext = PlaintextSecret::new(format!("secret-{}", i), SecretType::ApiKey);
-            let encrypted = crypto.encrypt(&plaintext).await.unwrap();
-            let file_path = Path::new(&format!("test{}.secret", i));
+            let plaintext = PlaintextSecret::new(format!("secret-{}", i).as_bytes().to_vec());
+            let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
+            let file_name = format!("test{}.secret", i);
+            let file_path = Path::new(&file_name);
             storage.store(file_path, &encrypted).await.unwrap();
         }
         
@@ -611,8 +612,8 @@ mod tests {
         storage.initialize().await.unwrap();
         
         // Store a test file
-        let plaintext = PlaintextSecret::new("test-secret".to_string(), SecretType::ApiKey);
-        let encrypted = crypto.encrypt(&plaintext).await.unwrap();
+        let plaintext = PlaintextSecret::new("test-secret".as_bytes().to_vec());
+        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
         let file_path = Path::new("test.secret");
         storage.store(file_path, &encrypted).await.unwrap();
         

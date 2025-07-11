@@ -224,17 +224,19 @@ impl GitIgnoreManager {
         }
         
         // Add ignore patterns
-        for pattern in &self.config.auto_patterns {
+        let auto_patterns = self.config.auto_patterns.clone();
+        for pattern in auto_patterns {
             if pattern.starts_with('#') {
-                self.patterns.push(IgnorePattern::Comment(pattern.clone()));
+                self.patterns.push(IgnorePattern::Comment(pattern));
             } else {
-                self.add_pattern(pattern).await?;
+                self.add_pattern(&pattern).await?;
             }
         }
         
         // Add include patterns for files that should be tracked
-        for pattern in &self.config.never_ignore {
-            self.add_include_pattern(pattern).await?;
+        let never_ignore = self.config.never_ignore.clone();
+        for pattern in never_ignore {
+            self.add_include_pattern(&pattern).await?;
         }
         
         Ok(())
@@ -249,7 +251,7 @@ impl GitIgnoreManager {
     
     /// Update patterns based on project structure
     pub async fn update_smart_patterns(&mut self) -> GitResult<()> {
-        let workdir = self.repo.workdir();
+        let workdir = self.repo.workdir().to_path_buf();
         
         // Check for common secret directories
         let secret_dirs = ["secrets", "config/secrets", "keys", ".env", "credentials"];

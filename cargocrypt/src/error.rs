@@ -243,6 +243,29 @@ impl From<std::io::Error> for CargoCryptError {
     }
 }
 
+/// Convert from CryptoError
+impl From<crate::crypto::CryptoError> for CargoCryptError {
+    fn from(error: crate::crypto::CryptoError) -> Self {
+        use crate::crypto::CryptoError;
+        
+        let kind = match &error {
+            CryptoError::KeyDerivation { .. } => CryptoErrorKind::KeyDerivation,
+            CryptoError::Encryption { .. } => CryptoErrorKind::Encryption,
+            CryptoError::Decryption { .. } => CryptoErrorKind::Decryption,
+            CryptoError::AuthenticationFailed => CryptoErrorKind::AuthenticationFailed,
+            CryptoError::InvalidKey { .. } => CryptoErrorKind::InvalidKey,
+            CryptoError::InvalidNonce { .. } => CryptoErrorKind::InvalidNonce,
+            CryptoError::RandomGeneration { .. } => CryptoErrorKind::RandomGenerationFailed,
+            _ => CryptoErrorKind::Encryption, // Default fallback
+        };
+        
+        Self::Crypto {
+            message: error.to_string(),
+            kind,
+        }
+    }
+}
+
 /// Convert from serde JSON errors
 impl From<serde_json::Error> for CargoCryptError {
     fn from(error: serde_json::Error) -> Self {

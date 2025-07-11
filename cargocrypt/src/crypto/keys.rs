@@ -206,6 +206,28 @@ impl SecureRandom {
             .map_err(|e| CryptoError::random_generation(e.to_string()))?;
         Ok(nonce)
     }
+    
+    /// Generate a random password of specified length
+    pub fn generate_password(length: usize) -> CryptoResult<String> {
+        const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+        let mut password = String::with_capacity(length);
+        let charset_len = CHARSET.len();
+        
+        for _ in 0..length {
+            let mut idx = [0u8; 1];
+            loop {
+                OsRng
+                    .try_fill_bytes(&mut idx)
+                    .map_err(|e| CryptoError::random_generation(e.to_string()))?;
+                if (idx[0] as usize) < charset_len * (256 / charset_len) {
+                    break;
+                }
+            }
+            password.push(CHARSET[idx[0] as usize % charset_len] as char);
+        }
+        
+        Ok(password)
+    }
 
     /// Generate random bytes of specified length
     pub fn generate_bytes(length: usize) -> CryptoResult<Vec<u8>> {

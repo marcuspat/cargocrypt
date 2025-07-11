@@ -4,7 +4,7 @@
 //! for zero-config cryptographic operations.
 
 use crate::error::{CargoCryptError, CryptoResult};
-use crate::crypto::{CryptoEngine, PerformanceProfile};
+use crate::crypto::{CryptoEngine, PerformanceProfile, EncryptedSecret};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -329,7 +329,7 @@ impl CargoCrypt {
     }
     
     /// Encrypt a file with the current configuration
-    pub async fn encrypt_file<P: AsRef<Path>>(&self, path: P) -> CryptoResult<PathBuf> {
+    pub async fn encrypt_file<P: AsRef<Path>>(&self, path: P, password: &str) -> CryptoResult<PathBuf> {
         let path = path.as_ref();
         let config = self.config.read().await;
         
@@ -346,11 +346,17 @@ impl CargoCrypt {
         // Read input file
         let input_data = tokio::fs::read(path).await?;
         
-        // For now, return an error since we need to implement file-level encryption
-        return Err(CargoCryptError::Config {
-            message: "File encryption not yet implemented".to_string(),
-            suggestion: Some("Use the crypto engine directly for data encryption".to_string()),
-        });
+        // Encrypt the data
+        let encrypted = self.engine.encrypt_data(&input_data, password)?;
+        
+        // Write encrypted data to output file
+        let encrypted_bytes = bincode::serialize(&encrypted)
+            .map_err(|e| CargoCryptError::Serialization {
+                message: format!("Failed to serialize encrypted data: {}", e),
+                source: Box::new(e),
+            })?;
+        
+        tokio::fs::write(&output_path, encrypted_bytes).await?;
         
         // Handle backup if configured
         if config.file_ops.backup_originals {
@@ -368,7 +374,7 @@ impl CargoCrypt {
     }
     
     /// Decrypt a file with the current configuration
-    pub async fn decrypt_file<P: AsRef<Path>>(&self, path: P) -> CryptoResult<PathBuf> {
+    pub async fn decrypt_file<P: AsRef<Path>>(&self, path: P, password: &str) -> CryptoResult<PathBuf> {
         let path = path.as_ref();
         let config = self.config.read().await;
         
@@ -389,11 +395,18 @@ impl CargoCrypt {
         // Read encrypted file
         let encrypted_data = tokio::fs::read(path).await?;
         
-        // For now, return an error since we need to implement file-level decryption
-        return Err(CargoCryptError::Config {
-            message: "File decryption not yet implemented".to_string(),
-            suggestion: Some("Use the crypto engine directly for data decryption".to_string()),
-        });
+        // Deserialize encrypted data
+        let encrypted: EncryptedSecret = bincode::deserialize(&encrypted_data)
+            .map_err(|e| CargoCryptError::Serialization {
+                message: format!("Failed to deserialize encrypted data: {}", e),
+                source: Box::new(e),
+            })?;
+        
+        // Decrypt the data
+        let decrypted_data = self.engine.decrypt_data(&encrypted, password)?;
+        
+        // Write decrypted data to output file
+        tokio::fs::write(&output_path, decrypted_data).await?;
         
         Ok(output_path)
     }

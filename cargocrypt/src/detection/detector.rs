@@ -73,7 +73,7 @@ impl Default for DetectionConfig {
 }
 
 /// Options for scanning operations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanOptions {
     /// Detection configuration
     pub detection_config: DetectionConfig,
