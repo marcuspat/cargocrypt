@@ -28,7 +28,7 @@ pub enum GitRepoError {
 pub type GitRepoResult<T> = Result<T, GitRepoError>;
 
 /// Git repository wrapper with CargoCrypt-specific functionality
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitRepo {
     repo: Repository,
     workdir: PathBuf,
