@@ -83,17 +83,17 @@ echo "database_password=sup3rs3cr3t" > config/database.yml
 
 ```bash
 # Initialize CargoCrypt in the project
-~/cargocrypt/cargocrypt/target/release/cargocrypt init
+cargocrypt init
 
 # Test file encryption
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt .env
+cargocrypt encrypt .env
 # Enter password when prompted
 
 # Verify encrypted file exists
 ls -la .env.enc
 
 # Test file decryption
-~/cargocrypt/cargocrypt/target/release/cargocrypt decrypt .env.enc
+cargocrypt decrypt .env.enc
 # Enter same password
 
 # Compare original and decrypted
@@ -112,7 +112,7 @@ const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.do
 EOF
 
 # Run secret detection
-~/cargocrypt/cargocrypt/target/release/cargocrypt detect test_secrets.js
+cargocrypt detect test_secrets.js
 ```
 
 ### Test Git Integration
@@ -124,13 +124,13 @@ git add .
 git commit -m "Initial commit"
 
 # Setup CargoCrypt git integration
-~/cargocrypt/cargocrypt/target/release/cargocrypt init --git
+cargocrypt init --git
 
 # Verify .gitignore was updated
 cat .gitignore | grep cargocrypt
 
 # Test encrypted file staging
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt secrets.txt
+cargocrypt encrypt secrets.txt
 git status  # Should show .enc file, not original
 ```
 
@@ -145,9 +145,9 @@ dd if=/dev/urandom of=test_10mb.bin bs=1M count=10
 dd if=/dev/urandom of=test_100mb.bin bs=1M count=100
 
 # Time encryption operations
-time ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt test_1mb.bin
-time ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt test_10mb.bin
-time ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt test_100mb.bin
+time cargocrypt encrypt test_1mb.bin
+time cargocrypt encrypt test_10mb.bin
+time cargocrypt encrypt test_100mb.bin
 ```
 
 ### Key Derivation Performance
@@ -161,7 +161,7 @@ echo "Testing key derivation performance..."
 # Create test config for each profile
 for profile in fast balanced secure paranoid; do
     echo "Profile: $profile"
-    time echo "test" | ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt --profile $profile test.txt
+    time echo "test" | cargocrypt encrypt --profile $profile test.txt
     echo ""
 done
 EOF
@@ -176,10 +176,10 @@ chmod +x perf_test.sh
 
 ```bash
 # Test weak passwords (should warn or reject)
-echo "test" | ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt --password "123" sensitive.txt
+echo "test" | cargocrypt encrypt --password "123" sensitive.txt
 
 # Test strong passwords
-echo "test" | ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt --password "Str0ng!P@ssw0rd#2024" sensitive.txt
+echo "test" | cargocrypt encrypt --password "Str0ng!P@ssw0rd#2024" sensitive.txt
 ```
 
 ### Tamper Detection
@@ -187,13 +187,13 @@ echo "test" | ~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt --passwo
 ```bash
 # Encrypt a file
 echo "important data" > important.txt
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt important.txt
+cargocrypt encrypt important.txt
 
 # Tamper with encrypted file
 echo "corrupted" >> important.txt.enc
 
 # Try to decrypt (should fail with authentication error)
-~/cargocrypt/cargocrypt/target/release/cargocrypt decrypt important.txt.enc
+cargocrypt decrypt important.txt.enc
 ```
 
 ## 6. CLI Feature Testing
@@ -202,19 +202,19 @@ echo "corrupted" >> important.txt.enc
 
 ```bash
 # Test help commands
-~/cargocrypt/cargocrypt/target/release/cargocrypt --help
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt --help
-~/cargocrypt/cargocrypt/target/release/cargocrypt detect --help
+cargocrypt --help
+cargocrypt encrypt --help
+cargocrypt detect --help
 ```
 
 ### Configuration
 
 ```bash
 # Show current configuration
-~/cargocrypt/cargocrypt/target/release/cargocrypt config
+cargocrypt config
 
 # Test configuration validation
-~/cargocrypt/cargocrypt/target/release/cargocrypt config set performance_profile invalid_value
+cargocrypt config set performance_profile invalid_value
 ```
 
 ## 7. Error Handling Testing
@@ -222,14 +222,14 @@ echo "corrupted" >> important.txt.enc
 ### File Not Found
 
 ```bash
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt nonexistent.txt
+cargocrypt encrypt nonexistent.txt
 ```
 
 ### Invalid Encrypted Files
 
 ```bash
 echo "not encrypted" > fake.enc
-~/cargocrypt/cargocrypt/target/release/cargocrypt decrypt fake.enc
+cargocrypt decrypt fake.enc
 ```
 
 ### Permission Errors
@@ -238,7 +238,7 @@ echo "not encrypted" > fake.enc
 # Create read-only file
 touch readonly.txt
 chmod 444 readonly.txt
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt readonly.txt
+cargocrypt encrypt readonly.txt
 ```
 
 ## 8. Batch Operations Testing
@@ -250,7 +250,7 @@ for i in {1..10}; do
 done
 
 # Batch encrypt
-~/cargocrypt/cargocrypt/target/release/cargocrypt encrypt secret_*.txt
+cargocrypt encrypt secret_*.txt
 
 # Verify all encrypted
 ls -la secret_*.enc | wc -l  # Should be 10
