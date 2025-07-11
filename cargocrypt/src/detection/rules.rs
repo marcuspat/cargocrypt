@@ -464,7 +464,7 @@ impl RuleEngine {
 
     /// Create a rule from configuration
     fn create_rule_from_config(&self, config: &RuleConfigItem) -> CryptoResult<CustomRule> {
-        let rule_type = match &config.rule_type {
+        let rule_type = match config.rule_type.as_str() {
             "regex" => {
                 let pattern = config.pattern.as_ref()
                     .ok_or_else(|| CargoCryptError::detection_error("Regex rule requires 'pattern' field"))?;
