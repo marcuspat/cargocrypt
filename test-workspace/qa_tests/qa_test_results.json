@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-07-12T12:29:38.744771",
+  "total_tests": 11,
+  "passed": 2,
+  "failed": 9,
+  "success_rate": "18.2%",
+  "tests": [
+    {
+      "name": "Encrypt .env -> .env.enc",
+      "passed": false,
+      "message": "Correct: False, Wrong file: False"
+    },
+    {
+      "name": "Encrypt config.json -> config.json.enc",
+      "passed": false,
+      "message": "Correct: False, Wrong file: False"
+    },
+    {
+      "name": "Encrypt data.tar.gz -> data.tar.gz.enc",
+      "passed": false,
+      "message": "Correct: False, Wrong file: False"
+    },
+    {
+      "name": "Encrypt README -> README.enc",
+      "passed": false,
+      "message": "Correct: False, Wrong file: False"
+    },
+    {
+      "name": "Reject empty password",
+      "passed": false,
+      "message": "'bytes' object has no attribute 'encode'"
+    },
+    {
+      "name": "Reject mismatched passwords",
+      "passed": false,
+      "message": "'bytes' object has no attribute 'encode'"
+    },
+    {
+      "name": "Accept matching passwords",
+      "passed": false,
+      "message": ""
+    },
+    {
+      "name": "TUI help command exists",
+      "passed": true,
+      "message": "Launch interactive TUI for all CargoCrypt operations\n\nUsage: cargocrypt tui\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "name": "TUI launches without crash",
+      "passed": true,
+      "message": "TUI started (killed after 1s as expected)"
+    },
+    {
+      "name": "Integration: Encrypt file",
+      "passed": false,
+      "message": ""
+    },
+    {
+      "name": "Integration: Encrypted file created",
+      "passed": false,
+      "message": ""
+    }
+  ],
+  "binary_found": true
+}

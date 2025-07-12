@@ -334,14 +334,17 @@ impl CargoCrypt {
         let config = self.config.read().await;
         
         // Generate output path
-        let output_path = path.with_extension(
-            format!("{}.{}", 
-                path.extension()
-                    .and_then(|ext| ext.to_str())
-                    .unwrap_or(""), 
-                config.file_ops.encrypted_extension
-            )
-        );
+        // For files with extensions, replace the extension with "original_ext.enc"
+        // For files without extensions (including dotfiles), just append ".enc"
+        let output_path = if let Some(ext) = path.extension() {
+            path.with_extension(format!("{}.{}", ext.to_string_lossy(), config.file_ops.encrypted_extension))
+        } else {
+            // No extension, just append .enc
+            let mut path_str = path.to_string_lossy().into_owned();
+            path_str.push('.');
+            path_str.push_str(&config.file_ops.encrypted_extension);
+            PathBuf::from(path_str)
+        };
         
         // Read input file
         let input_data = tokio::fs::read(path).await?;
@@ -360,13 +363,14 @@ impl CargoCrypt {
         
         // Handle backup if configured
         if config.file_ops.backup_originals {
-            let backup_path = path.with_extension(
-                format!("{}.backup", 
-                    path.extension()
-                        .and_then(|ext| ext.to_str())
-                        .unwrap_or("")
-                )
-            );
+            let backup_path = if let Some(ext) = path.extension() {
+                path.with_extension(format!("{}.backup", ext.to_string_lossy()))
+            } else {
+                // No extension, just append .backup
+                let mut path_str = path.to_string_lossy().into_owned();
+                path_str.push_str(".backup");
+                PathBuf::from(path_str)
+            };
             tokio::fs::copy(path, backup_path).await?;
         }
         
@@ -379,16 +383,17 @@ impl CargoCrypt {
         let config = self.config.read().await;
         
         // Generate output path (remove .enc extension)
-        let output_path = if path.extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext == config.file_ops.encrypted_extension)
-            .unwrap_or(false) 
-        {
-            path.with_extension("")
+        let path_str = path.to_string_lossy();
+        let enc_ext = format!(".{}", config.file_ops.encrypted_extension);
+        
+        let output_path = if path_str.ends_with(&enc_ext) {
+            // Remove the .enc extension
+            let new_path = path_str[..path_str.len() - enc_ext.len()].to_string();
+            PathBuf::from(new_path)
         } else {
             return Err(CargoCryptError::Config {
                 message: format!("File '{}' doesn't appear to be encrypted", path.display()),
-                suggestion: Some("Encrypted files should have the .enc extension".to_string()),
+                suggestion: Some(format!("Encrypted files should have the .{} extension", config.file_ops.encrypted_extension).to_string()),
             });
         };
         
@@ -663,5 +668,86 @@ mod tests {
         
         // The builder should be configurable
         assert_eq!(builder.config.performance_profile, PerformanceProfile::Secure);
+    }
+    
+    #[tokio::test]
+    async fn test_filename_extension_handling() {
+        use tempfile::TempDir;
+        
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create test instance
+        let cargocrypt = CargoCrypt::builder()
+            .project_root(temp_path)
+            .build()
+            .await
+            .unwrap();
+        
+        // Test cases: (input_filename, expected_encrypted_filename)
+        let test_cases = vec![
+            (".env", ".env.enc"),
+            ("secrets.txt", "secrets.txt.enc"),
+            ("config.json", "config.json.enc"),
+            (".gitignore", ".gitignore.enc"),
+            ("file.tar.gz", "file.tar.gz.enc"),
+            ("noextension", "noextension.enc"),
+        ];
+        
+        let password = "test-password";
+        
+        for (input_file, expected_encrypted) in test_cases {
+            // Create test file
+            let input_path = temp_path.join(input_file);
+            tokio::fs::write(&input_path, format!("Test content for {}", input_file))
+                .await
+                .unwrap();
+            
+            // Encrypt the file
+            let encrypted_path = cargocrypt.encrypt_file(&input_path, password)
+                .await
+                .unwrap();
+            
+            // Check the encrypted filename
+            assert_eq!(
+                encrypted_path.file_name().unwrap().to_str().unwrap(),
+                expected_encrypted,
+                "Failed encryption naming for {}",
+                input_file
+            );
+            
+            // Verify encrypted file exists
+            assert!(encrypted_path.exists(), "Encrypted file doesn't exist for {}", input_file);
+            
+            // Now decrypt it back
+            let decrypted_path = cargocrypt.decrypt_file(&encrypted_path, password)
+                .await
+                .unwrap();
+            
+            // Check the decrypted filename matches the original
+            assert_eq!(
+                decrypted_path.file_name().unwrap().to_str().unwrap(),
+                input_file,
+                "Failed decryption naming for {}",
+                expected_encrypted
+            );
+            
+            // Verify content is the same
+            let decrypted_content = tokio::fs::read_to_string(&decrypted_path)
+                .await
+                .unwrap();
+            assert_eq!(
+                decrypted_content,
+                format!("Test content for {}", input_file),
+                "Content mismatch after decrypt for {}",
+                input_file
+            );
+            
+            // Cleanup
+            let _ = tokio::fs::remove_file(&input_path).await;
+            let _ = tokio::fs::remove_file(&encrypted_path).await;
+            let _ = tokio::fs::remove_file(&decrypted_path).await;
+        }
     }
 }
