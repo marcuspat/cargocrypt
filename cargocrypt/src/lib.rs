@@ -47,7 +47,7 @@ pub mod error;
 pub mod detection;
 pub mod git;
 // pub mod providers;
-// pub mod tui;
+pub mod tui;
 
 /// Default configuration that works for most use cases
 ///

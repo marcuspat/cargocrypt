@@ -1,0 +1,4 @@
+
+# CargoCrypt secrets
+.cargocrypt/secrets/
+*.enc
