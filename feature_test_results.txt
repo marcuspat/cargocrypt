@@ -1,0 +1,45 @@
+=== CargoCrypt Feature Test ===
+Testing v0.1.2 features...
+
+1. Version Test:
+cargocrypt 0.1.2
+
+2. Help Test:
+Zero-config cryptographic operations for Rust projects
+  init     Initialize CargoCrypt in current project
+  encrypt  Encrypt a file
+  decrypt  Decrypt a file
+  config   Show configuration
+  tui      Launch interactive TUI for all CargoCrypt operations
+
+3. Init Test:
+    Creating binary (application) package
+note: see more `Cargo.toml` keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+./test_all_features.sh: line 18: cd: testproj: No such file or directory
+✅ CargoCrypt initialized successfully!
+total 12
+drwxrwxrwx+ 2 codespace codespace 4096 Jul 16 12:24 .
+drwxrwxrwx+ 4 codespace codespace 4096 Jul 16 12:24 ..
+-rw-rw-rw-  1 codespace codespace  440 Jul 16 12:24 config.toml
+
+4. Encrypt Test:
+ls: cannot access '*.enc': No such file or directory
+
+5. Decrypt Test:
+Decrypt failed
+
+6. Config Test:
+📋 Current configuration:
+  Performance Profile: Balanced
+  Key derivation: Argon2id
+  Memory cost: 65536 KiB
+  Time cost: 3 iterations
+  Parallelism: 4
+  Auto-backup: true
+  Fail-secure: true
+
+7. TUI Test:
+  tui      Launch interactive TUI for all CargoCrypt operations
+TUI command available
+
+=== Test Complete ===
