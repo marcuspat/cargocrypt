@@ -1,0 +1,25 @@
+performance_profile = "Balanced"
+
+[key_params]
+memory_cost = 65536
+time_cost = 3
+parallelism = 4
+output_length = 32
+
+[file_ops]
+backup_originals = true
+encrypted_extension = "enc"
+buffer_size = 65536
+preserve_permissions = true
+
+[security]
+require_confirmation = true
+auto_zeroize = true
+fail_secure = true
+max_password_attempts = 3
+
+[performance]
+async_operations = true
+max_concurrent_ops = 4
+progress_reporting = true
+key_caching = true

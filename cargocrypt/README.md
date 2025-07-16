@@ -2,7 +2,25 @@
 
 **Zero-config cryptographic operations for Rust projects**
 
+[![Crates.io](https://img.shields.io/crates/v/cargocrypt.svg)](https://crates.io/crates/cargocrypt)
+[![License](https://img.shields.io/crates/l/cargocrypt.svg)](LICENSE-MIT)
+
 CargoCrypt brings enterprise-grade cryptography to your Rust workflow with zero configuration required. Inspired by the success of tools like `cargo-audit` and `ripgrep`, it emphasizes performance, security, and developer experience.
+
+> ⚠️ **Current Status**: Early development (v0.1.2) - Core encryption/decryption works, but some features are still in progress.
+
+## Recent Updates
+
+### v0.1.2 (Current)
+- Fixed critical filename extension handling
+- Improved password security
+- Enhanced TUI integration
+- Published to crates.io
+
+### v0.1.1
+- Initial release with basic encryption/decryption
+- Zero-config initialization
+- ChaCha20-Poly1305 support
 
 ## Quick Start
 
@@ -28,30 +46,27 @@ cargocrypt tui
 
 ## Features
 
-### 🚀 Zero Configuration
-- **Works out of the box** - No config files needed
-- **Smart defaults** - Follows Rust ecosystem conventions
-- **Git integration** - Respects `.gitignore` and hooks
-- **Project detection** - Automatically finds Rust projects
-
-### 🔒 Enterprise Security
-- **Ring cryptography** - Battle-tested crypto primitives
-- **Multiple algorithms** - AES-256-GCM, ChaCha20-Poly1305, Ed25519
-- **Key management** - Secure key derivation and storage
-- **Audit trail** - All operations are logged
-
-### 💫 Developer Experience
-- **Fast** - Rust performance with optimized release builds
+### ✅ Working Features
+- **Zero Configuration** - Works out of the box, no config files needed
+- **ChaCha20-Poly1305 encryption** - Fast, secure authenticated encryption
+- **Argon2id key derivation** - Industry-standard password-based key derivation
+- **Project initialization** - `cargocrypt init` sets up your project
 - **Interactive TUI** - Beautiful terminal interface with `ratatui`
-- **Progress indicators** - Visual feedback for long operations
-- **Error messages** - Clear, actionable error reporting
-- **Shell completion** - Bash, Zsh, Fish support
+- **Secure defaults** - Balanced security/performance out of the box
 
-### 🔧 Rust-First Design
-- **Cargo integration** - Works seamlessly with `cargo` workflows
-- **Project-aware** - Understands Rust project structure
-- **CI/CD friendly** - Perfect for automated workflows
+### 🚧 In Development
+- **Git integration** - Hooks and filters (partially implemented)
+- **Multiple algorithms** - Currently only ChaCha20-Poly1305 is available
+- **Key management** - Advanced key storage and rotation
+- **Shell completion** - Command-line completion for shells
+- **Audit trail** - Operation logging
+- **CI/CD support** - Non-interactive password input for automation
+
+### 🔧 Technical Details
+- **Built with Ring** - Battle-tested crypto primitives
 - **Cross-platform** - Linux, macOS, Windows support
+- **Rust-first design** - Integrates with Cargo workflows
+- **Memory-safe** - Secure secret handling with zeroization
 
 ## Philosophy
 
@@ -84,122 +99,139 @@ Download from [GitHub Releases](https://github.com/cargocrypt/cargocrypt/release
 ### Basic Operations
 
 ```bash
-# Initialize project (creates .cargocrypt/ if needed)
+# Initialize project (creates .cargocrypt/ directory)
 cargocrypt init
 
-# Encrypt files or directories
+# Encrypt a file (interactive password prompt)
 cargocrypt encrypt src/api_keys.rs
-cargocrypt encrypt config/
+# Creates: src/api_keys.rs.enc
 
-# Decrypt files
+# Decrypt a file (interactive password prompt)
 cargocrypt decrypt src/api_keys.rs.enc
+# Restores: src/api_keys.rs
+
+# Show current configuration
+cargocrypt config
+```
+
+### Advanced Usage (Planned)
+
+```bash
+# These features are planned for future releases:
+
+# Encrypt directories
+cargocrypt encrypt config/
 
 # List encrypted files
 cargocrypt list
 
-# Verify integrity
-cargocrypt verify
-```
-
-### Key Management
-
-```bash
-# Generate new keys
+# Key management
 cargocrypt keygen --algorithm ed25519
-cargocrypt keygen --algorithm rsa4096
-
-# Import existing keys
-cargocrypt key import --file key.pem
-
-# Export public keys
-cargocrypt key export --public --format pem
-
-# Rotate keys
-cargocrypt key rotate --backup
+cargocrypt key rotate
 ```
 
 ### Interactive Mode
 
 ```bash
-# Launch TUI
+# Launch TUI (Terminal User Interface)
 cargocrypt tui
 ```
 
 The TUI provides:
 - **File browser** - Navigate and select files to encrypt/decrypt
-- **Key management** - Visual key generation and management
-- **Progress tracking** - Real-time operation status
-- **Git integration** - See which files are tracked/ignored
+- **Visual operations** - See encryption/decryption in progress
+- **Password entry** - Secure password input with confirmation
+- **Configuration view** - See current settings
 
-### Git Integration
-
-```bash
-# Setup git hooks (optional)
-cargocrypt git setup
-
-# Encrypt before commit
-cargocrypt git pre-commit
-
-# Decrypt after checkout
-cargocrypt git post-checkout
-```
+> Note: Some TUI features like key management and git integration are still in development.
 
 ## Configuration (Optional)
 
-While CargoCrypt works with zero configuration, you can customize behavior:
+While CargoCrypt works with zero configuration, you can customize behavior by creating `.cargocrypt/config.toml`:
 
 ```toml
 # .cargocrypt/config.toml (optional)
 [crypto]
-default_algorithm = "chacha20poly1305"
-key_derivation = "argon2id"
+# Performance profile: "fast", "balanced", "secure", "paranoid"
+performance_profile = "balanced"
 
-[files]
-ignore_patterns = ["*.tmp", "target/"]
-auto_encrypt = ["src/secrets/"]
+[security]
+# Fail secure - abort on any security warnings
+fail_secure = true
 
-[git]
-pre_commit_hook = true
-auto_decrypt = true
+[file_ops]
+# Keep backup of original files
+backup_originals = true
 ```
+
+> Note: Configuration file support is implemented but limited. More options will be added in future releases.
 
 ## Security
 
-### Cryptographic Choices
+### Cryptographic Implementation
 
 - **Ring** - Industry-standard cryptographic library
-- **ChaCha20-Poly1305** - Default AEAD cipher (fast, secure)
-- **AES-256-GCM** - Alternative AEAD cipher (hardware accelerated)
-- **Ed25519** - Default signature algorithm
-- **Argon2id** - Key derivation function
+- **ChaCha20-Poly1305** - Fast, secure AEAD cipher
+- **Argon2id** - Memory-hard key derivation function
+- **Secure randomness** - Uses Ring's secure RNG
+- **Constant-time operations** - Protection against timing attacks
 
-### Key Storage
+### Key Derivation Parameters
 
-- **OS keychain integration** - Secure storage on macOS/Windows
-- **Environment variables** - For CI/CD environments
-- **File-based** - Encrypted key files with proper permissions
-- **Hardware tokens** - YubiKey support (planned)
+CargoCrypt offers multiple security profiles:
 
-### Audit and Compliance
+| Profile  | Memory Cost | Time Cost | Parallelism | Use Case |
+|----------|------------|-----------|-------------|----------|
+| Fast     | 4 MB       | 1 iter    | 8 threads   | Testing  |
+| Balanced | 64 MB      | 3 iter    | 4 threads   | Default  |
+| Secure   | 256 MB     | 4 iter    | 4 threads   | Sensitive data |
+| Paranoid | 1 GB       | 10 iter   | 4 threads   | Maximum security |
 
-- **Operation logging** - All crypto operations are logged
-- **Integrity verification** - Built-in file integrity checks
-- **Key rotation** - Easy key rotation with backward compatibility
-- **Compliance ready** - Supports SOC2, FIPS requirements
+### Security Considerations
+
+- **Password strength** - Use strong passwords; the tool doesn't enforce password policies yet
+- **Memory protection** - Secrets are zeroized on drop using the `zeroize` crate
+- **No key storage** - Keys are derived from passwords; no permanent key storage yet
+- **File permissions** - Encrypted files maintain original permissions
 
 ## Performance
 
-CargoCrypt is optimized for speed:
+CargoCrypt delivers excellent performance with security:
 
-```bash
-# Benchmark on your machine
-cargocrypt benchmark
+### Benchmark Results
 
-# Typical performance (M1 MacBook Pro):
-# Encryption: 1.2 GB/s (ChaCha20-Poly1305)
-# Decryption: 1.4 GB/s (ChaCha20-Poly1305)
-# Key generation: 15ms (Ed25519)
-```
+Run benchmarks with: `cargo run --example performance_test --release`
+
+**Encryption/Decryption (with Argon2 key derivation):**
+- 1 MB file: ~210ms encryption, ~105ms decryption
+- 10 MB file: ~220ms encryption, ~110ms decryption
+- Throughput: 4-45 MB/s (includes key derivation overhead)
+
+**Raw ChaCha20-Poly1305 Performance (without key derivation):**
+- Encryption: 1.0-1.2 GB/s
+- Decryption: 1.0-1.3 GB/s
+- Near-native performance for the cipher itself
+
+**Key Derivation Times:**
+- Fast profile: ~110ms (4 MB memory)
+- Balanced profile: ~225ms (64 MB memory) - **Default**
+- Secure profile: ~810ms (256 MB memory)
+- Paranoid profile: ~6.8s (1 GB memory)
+
+> Note: The key derivation is the primary performance bottleneck by design - it protects against brute-force attacks.
+
+## Known Issues & Limitations
+
+### Current Limitations
+- **TTY required** - Password prompts require an interactive terminal (no piped passwords yet)
+- **Single algorithm** - Only ChaCha20-Poly1305 is implemented (no AES-GCM yet)
+- **No key files** - Passwords only; no support for key files or hardware tokens
+- **Limited git integration** - Git hooks and filters are partially implemented
+- **No directory encryption** - Only individual files are supported
+
+### Platform Notes
+- **Windows** - Tested on Windows 10/11, should work but less tested than Linux/macOS
+- **CI/CD** - Non-interactive mode not yet supported (requires TTY for passwords)
 
 ## Contributing
 
@@ -216,11 +248,11 @@ cargo build
 # Run tests
 cargo test
 
-# Run integration tests
-cargo test --test integration
+# Run benchmarks
+cargo run --example performance_test --release
 
-# Benchmark
-cargo bench
+# Build release version
+cargo build --release
 ```
 
 ## License
@@ -231,15 +263,36 @@ Licensed under either of:
 
 at your option.
 
+## Roadmap
+
+### Version 0.2.0 (Planned)
+- [ ] Non-interactive mode for CI/CD
+- [ ] AES-256-GCM support
+- [ ] Directory encryption
+- [ ] Key file support
+
+### Version 0.3.0 (Planned)
+- [ ] Full git integration (hooks, filters)
+- [ ] Team key sharing
+- [ ] Hardware token support
+- [ ] Shell completions
+
+### Version 1.0.0 (Future)
+- [ ] Stable API
+- [ ] Comprehensive key management
+- [ ] Audit logging
+- [ ] Plugin system
+
 ## Inspiration
 
 CargoCrypt draws inspiration from excellent Rust tools:
 - **cargo-audit** - Security-focused cargo subcommand
 - **ripgrep** - Fast, user-friendly search
-- **fd** - Simple, fast find alternative
-- **bat** - Cat with syntax highlighting
+- **bat** - Modern take on cat
 - **exa** - Modern ls replacement
+
+The goal is to make cryptography as easy to use as these everyday tools.
 
 ---
 
-**Zero config. Maximum security. Pure Rust performance.**
+**Zero config. Maximum security. Pure Rust.**
