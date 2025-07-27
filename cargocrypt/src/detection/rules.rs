@@ -3,7 +3,7 @@
 //! This module allows users to define their own detection rules using various
 //! rule types including regex patterns, entropy thresholds, and composite rules.
 
-use crate::detection::{SecretType, PatternMatch, EntropyResult};
+use crate::detection::SecretType;
 use crate::error::{CargoCryptError, CryptoResult};
 use regex::Regex;
 use serde::{Deserialize, Serialize};

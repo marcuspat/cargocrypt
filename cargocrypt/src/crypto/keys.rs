@@ -1,7 +1,7 @@
 //! Key derivation and management
 
 use crate::crypto::{CryptoError, CryptoResult, defaults};
-use argon2::{Argon2, Params, Algorithm, Version, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::{Argon2, Params};
 use chacha20poly1305::Key;
 use rand::{RngCore, rngs::OsRng};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -75,12 +75,30 @@ impl DerivedKey {
         &self.salt
     }
 
-    /// Verify a password against this derived key
+    /// Verify a password against this derived key using constant-time comparison
     pub fn verify_password(&self, password: &str) -> CryptoResult<bool> {
+        let test_key = Self::from_password_with_salt(password, &self.salt)?;
+        
+        // Use constant-time comparison to prevent timing attacks
+        let result = self.key.ct_eq(&test_key.key).into();
+        Ok(result)
+    }
+
+    /// Verify a password with enhanced security protections
+    pub fn verify_password_secure(&self, password: &str, min_time: std::time::Duration) -> CryptoResult<bool> {
+        let start_time = std::time::Instant::now();
+        
         let test_key = Self::from_password_with_salt(password, &self.salt)?;
         
         // Use constant-time comparison
         let result = self.key.ct_eq(&test_key.key).into();
+        
+        // Ensure minimum verification time to prevent timing attacks
+        let elapsed = start_time.elapsed();
+        if elapsed < min_time {
+            std::thread::sleep(min_time - elapsed);
+        }
+        
         Ok(result)
     }
 
@@ -189,22 +207,49 @@ impl KeyDerivationParams {
 pub struct SecureRandom;
 
 impl SecureRandom {
-    /// Generate a random salt
+    /// Generate a random salt with entropy validation
     pub fn generate_salt() -> CryptoResult<[u8; defaults::SALT_LENGTH]> {
         let mut salt = [0u8; defaults::SALT_LENGTH];
         OsRng
             .try_fill_bytes(&mut salt)
             .map_err(|e| CryptoError::random_generation(e.to_string()))?;
+        
+        // Basic entropy validation to catch obvious failures
+        Self::validate_entropy(&salt)?;
         Ok(salt)
     }
 
-    /// Generate a random nonce
+    /// Generate a random nonce with entropy validation
     pub fn generate_nonce() -> CryptoResult<[u8; defaults::NONCE_LENGTH]> {
         let mut nonce = [0u8; defaults::NONCE_LENGTH];
         OsRng
             .try_fill_bytes(&mut nonce)
             .map_err(|e| CryptoError::random_generation(e.to_string()))?;
+        
+        // Basic entropy validation to catch obvious failures
+        Self::validate_entropy(&nonce)?;
         Ok(nonce)
+    }
+
+    /// Validate entropy of random data
+    fn validate_entropy(data: &[u8]) -> CryptoResult<()> {
+        if data.is_empty() {
+            return Err(CryptoError::random_generation("Empty random data"));
+        }
+
+        // Check for obvious low-entropy patterns
+        let all_same = data.iter().all(|&b| b == data[0]);
+        if all_same {
+            return Err(CryptoError::random_generation("Low entropy - all bytes identical"));
+        }
+
+        let all_zeros = data.iter().all(|&b| b == 0);
+        let all_ones = data.iter().all(|&b| b == 255);
+        if all_zeros || all_ones {
+            return Err(CryptoError::random_generation("Low entropy - suspicious pattern"));
+        }
+
+        Ok(())
     }
     
     /// Generate a random password of specified length

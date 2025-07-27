@@ -1,1 +1,27 @@
+*.cargocrypt
+*.enc
+.cargocrypt/
+!.cargocrypt/config.toml
+!.cargocrypt/team/
+# Build artifacts
 target/
+*.db-shm
+*.db-wal
+*.db
+
+# Test files  
+test_debug/
+test_files/
+test_suite/
+*.log
+
+# Claude Flow
+claude-flow
+claude-flow.bat
+claude-flow.ps1
+package.json
+package-lock.json
+
+# Node modules
+node_modules/
+

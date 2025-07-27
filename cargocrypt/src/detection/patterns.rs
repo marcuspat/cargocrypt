@@ -90,7 +90,7 @@ impl SecretType {
             SecretType::PgpPrivateKey => "PGP Private Key",
             SecretType::HighEntropyString => "High-Entropy String",
             SecretType::EnvironmentSecret => "Environment Variable Secret",
-            SecretType::Custom(name) => "Custom Pattern",
+            SecretType::Custom(_name) => "Custom Pattern",
         }
     }
 

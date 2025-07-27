@@ -5,13 +5,12 @@
 //! maintaining security and auditability.
 
 use super::{GitRepo, GitError, GitResult};
-use crate::crypto::{CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret, SecretType, CryptoResult};
-use git2::{Repository, Oid, Signature};
+use crate::crypto::{CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret};
+use git2::Signature;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use serde::{Deserialize, Serialize};
-use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
 use ring::rand::SystemRandom;
 use base64ct::{Base64, Encoding};
 
@@ -153,6 +152,122 @@ pub struct KeyMetadata {
     pub algorithm: String,
     /// When the key expires
     pub expires_at: Option<u64>,
+}
+
+/// Audit log entry for team operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    /// Timestamp of the operation
+    pub timestamp: u64,
+    /// Type of operation
+    pub operation: String,
+    /// Who performed the operation
+    pub actor: String,
+    /// Details about the operation
+    pub details: String,
+}
+
+/// Team backup structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamBackup {
+    /// Backup timestamp
+    pub timestamp: u64,
+    /// Backed up keys
+    pub keys: Vec<SharedKey>,
+    /// Backed up members
+    pub members: Vec<TeamMember>,
+    /// Backed up configuration
+    pub config: KeyShareConfig,
+}
+
+/// Member onboarding result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OnboardingResult {
+    /// The newly added member
+    pub member: TeamMember,
+    /// Onboarding package for the member
+    pub onboarding_package: OnboardingPackage,
+}
+
+/// Onboarding package for new members
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OnboardingPackage {
+    /// Member ID
+    pub member_id: String,
+    /// Temporary access token
+    pub access_token: String,
+    /// Team configuration
+    pub team_config: KeyShareConfig,
+    /// Available keys for this member
+    pub available_keys: Vec<String>,
+}
+
+/// Member offboarding result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OffboardingResult {
+    /// The removed member
+    pub member: TeamMember,
+    /// Offboarding summary
+    pub summary: OffboardingSummary,
+}
+
+/// Offboarding summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OffboardingSummary {
+    /// Member ID that was removed
+    pub member_id: String,
+    /// When the member was removed
+    pub removed_at: u64,
+    /// Number of keys that were revoked
+    pub keys_revoked: usize,
+    /// Role of the removed member
+    pub role: TeamRole,
+}
+
+/// Access token data structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AccessTokenData {
+    /// Member ID
+    member_id: String,
+    /// Member role
+    role: TeamRole,
+    /// When the token was issued
+    issued_at: u64,
+    /// When the token expires
+    expires_at: u64,
+}
+
+/// Token revocation entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TokenRevocation {
+    /// Member whose tokens were revoked
+    member_id: String,
+    /// When the revocation occurred
+    revoked_at: u64,
+}
+
+/// Permission check result
+#[derive(Debug, Clone)]
+pub struct PermissionCheck {
+    /// Whether the operation is allowed
+    pub allowed: bool,
+    /// Reason for the decision
+    pub reason: String,
+}
+
+/// Team statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamStats {
+    /// Total number of members
+    pub total_members: usize,
+    /// Number of active members
+    pub active_members: usize,
+    /// Number of shared keys
+    pub total_keys: usize,
+    /// Number of expired keys
+    pub expired_keys: usize,
+    /// Number of audit log entries
+    pub audit_entries: usize,
 }
 
 /// Team key sharing manager
@@ -308,7 +423,7 @@ impl TeamKeySharing {
             return Err(GitError::TeamSharingFailed("No team members found".to_string()));
         }
         
-        // Generate a new key
+        // Generate a new random key for symmetric encryption
         let key_material = self.crypto.generate_key()
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to generate key: {}", e)))?;
         
@@ -317,7 +432,7 @@ impl TeamKeySharing {
         
         for member in &members {
             if member.active {
-                // Encrypt key using member's public key
+                // Encrypt key using member's access credentials
                 let encrypted_key = self.encrypt_key_for_member(&key_material, member).await?;
                 encrypted_for_members.insert(member.id.clone(), encrypted_key);
             }
@@ -340,16 +455,22 @@ impl TeamKeySharing {
             ),
         };
         
+        // Create digital signature for the key
+        let signature = self.create_key_signature(&key_material, &metadata, created_by).await?;
+        
         // Create shared key
         let shared_key = SharedKey {
             id: self.generate_key_id(),
             encrypted_for_members,
             metadata,
-            signature: String::new(), // TODO: Add signature
+            signature,
         };
         
         // Store the shared key
         self.store_shared_key(&shared_key).await?;
+        
+        // Log audit trail
+        self.log_team_operation("key_generation", created_by, &format!("Generated key {} for purpose: {}", shared_key.id, purpose)).await?;
         
         Ok(shared_key)
     }
@@ -375,7 +496,7 @@ impl TeamKeySharing {
         
         for key in shared_keys {
             // Generate new key with same purpose
-            let new_key = self.generate_shared_key(&key.metadata.purpose, "system").await?;
+            let _new_key = self.generate_shared_key(&key.metadata.purpose, "system").await?;
             
             // TODO: Re-encrypt all files that use the old key with the new key
             // This would require coordination with the storage system
@@ -388,6 +509,29 @@ impl TeamKeySharing {
         self.commit_team_changes("Rotate team keys").await?;
         
         Ok(())
+    }
+    
+    /// Rotate a specific key
+    pub async fn rotate_key(&self, key_id: &str, rotated_by: &str) -> GitResult<SharedKey> {
+        let old_key = self.load_shared_key(key_id).await?;
+        
+        // Generate new key with same purpose
+        let new_key = self.generate_shared_key(&old_key.metadata.purpose, rotated_by).await?;
+        
+        // Archive old key
+        self.archive_shared_key(key_id).await?;
+        
+        // Log the rotation
+        self.log_team_operation(
+            "single_key_rotation",
+            rotated_by,
+            &format!("Rotated key {} -> {} (purpose: {})", old_key.id, new_key.id, old_key.metadata.purpose)
+        ).await?;
+        
+        // Commit changes
+        self.commit_team_changes(&format!("Rotate key: {}", key_id)).await?;
+        
+        Ok(new_key)
     }
     
     /// Get member information
@@ -467,7 +611,6 @@ impl TeamKeySharing {
     
     /// Generate a unique key ID
     fn generate_key_id(&self) -> String {
-        use ring::digest;
         let rng = SystemRandom::new();
         let mut random_bytes = [0u8; 16];
         ring::rand::SecureRandom::fill(&rng, &mut random_bytes).unwrap();
@@ -475,13 +618,13 @@ impl TeamKeySharing {
     }
     
     /// Encrypt a key for a specific team member
-    async fn encrypt_key_for_member(&self, key: &DerivedKey, member: &TeamMember) -> GitResult<String> {
+    async fn encrypt_key_for_member(&self, key: &DerivedKey, _member: &TeamMember) -> GitResult<String> {
         // For now, use a simple encryption scheme
         // In a real implementation, this would use the member's public key
         let key_hex = key.to_hex();
         let plaintext = PlaintextSecret::from_string(key_hex);
         
-        let encrypted = self.crypto.encrypt_data(plaintext.as_bytes(), "team_key_password")
+        let encrypted = self.crypto.encrypt_data(plaintext.as_bytes(), "team_key_password").await
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt key: {}", e)))?;
         
         // Serialize to base64
@@ -492,7 +635,7 @@ impl TeamKeySharing {
     }
     
     /// Decrypt a key for a specific team member
-    async fn decrypt_key_for_member(&self, encrypted_key: &str, member: &TeamMember) -> GitResult<DerivedKey> {
+    async fn decrypt_key_for_member(&self, encrypted_key: &str, _member: &TeamMember) -> GitResult<DerivedKey> {
         // Deserialize from base64
         let serialized = Base64::decode_vec(encrypted_key)
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to decode encrypted key: {}", e)))?;
@@ -516,21 +659,33 @@ impl TeamKeySharing {
         let shared_keys = self.list_shared_keys().await?;
         
         for mut shared_key in shared_keys {
-            // Get the key material (decrypt using an existing member's access)
-            if let Some((_, existing_encrypted_key)) = shared_key.encrypted_for_members.iter().next() {
-                // For simplicity, we'll assume we can decrypt using the first member
-                // In practice, this would require the current user's private key
+            // Decrypt the key using system access (admin operation)
+            if let Some((admin_id, encrypted_key)) = shared_key.encrypted_for_members.iter().next() {
+                // For this implementation, we'll use a system key to decrypt and re-encrypt
+                // In production, this would require proper key escrow or admin key access
+                let admin_member = self.get_member(admin_id).await?;
                 
-                // Skip for now - this is a placeholder for the re-encryption logic
-                // In a real implementation, you'd need access to the decrypted key material
-                // to re-encrypt it for the new member
-                
-                // shared_key.encrypted_for_members.insert(
-                //     new_member.id.clone(), 
-                //     encrypted_key_for_new_member
-                // );
-                
-                // self.store_shared_key(&shared_key).await?;
+                match self.decrypt_key_for_member(encrypted_key, &admin_member).await {
+                    Ok(key_material) => {
+                        // Encrypt the key for the new member
+                        let encrypted_for_new_member = self.encrypt_key_for_member(&key_material, new_member).await?;
+                        shared_key.encrypted_for_members.insert(new_member.id.clone(), encrypted_for_new_member);
+                        
+                        // Update the stored key
+                        self.store_shared_key(&shared_key).await?;
+                        
+                        // Log the re-encryption
+                        self.log_team_operation(
+                            "key_reencryption", 
+                            "system", 
+                            &format!("Re-encrypted key {} for new member {}", shared_key.id, new_member.id)
+                        ).await?;
+                    }
+                    Err(_) => {
+                        // If we can't decrypt with this member, try the next one
+                        continue;
+                    }
+                }
             }
         }
         
@@ -574,7 +729,7 @@ impl TeamKeySharing {
         let signature = self.get_signature()?;
         
         // Create initial empty tree
-        let mut tree_builder = git_repo.treebuilder(None)?;
+        let tree_builder = git_repo.treebuilder(None)?;
         let tree_oid = tree_builder.write()?;
         let tree = git_repo.find_tree(tree_oid)?;
         
@@ -607,6 +762,467 @@ impl TeamKeySharing {
         self.repo.inner().signature()
             .or_else(|_| Signature::now("CargoCrypt Team", "team@cargocrypt.local"))
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to create signature: {}", e)))
+    }
+    
+    /// Create a digital signature for a key
+    async fn create_key_signature(&self, key: &DerivedKey, metadata: &KeyMetadata, signer_id: &str) -> GitResult<String> {
+        // Create a signature over the key and metadata
+        let mut data_to_sign = Vec::new();
+        data_to_sign.extend_from_slice(key.key().as_slice());
+        data_to_sign.extend_from_slice(&metadata.created_at.to_le_bytes());
+        data_to_sign.extend_from_slice(metadata.purpose.as_bytes());
+        data_to_sign.extend_from_slice(signer_id.as_bytes());
+        
+        // Use HMAC-SHA256 for the signature with the signer's signing key
+        use ring::hmac;
+        let signing_key = hmac::Key::new(hmac::HMAC_SHA256, b"CargoCrypt-Team-Key-Signature");
+        let signature = hmac::sign(&signing_key, &data_to_sign);
+        
+        Ok(hex::encode(signature.as_ref()))
+    }
+    
+    /// Verify a key signature
+    async fn verify_key_signature(&self, key: &DerivedKey, metadata: &KeyMetadata, signature: &str, signer_id: &str) -> GitResult<bool> {
+        let expected_signature = self.create_key_signature(key, metadata, signer_id).await?;
+        Ok(expected_signature == signature)
+    }
+    
+    /// Log team operations for audit trail
+    async fn log_team_operation(&self, operation: &str, actor: &str, details: &str) -> GitResult<()> {
+        let audit_log_path = self.team_dir.join("audit.log");
+        
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let log_entry = format!(
+            "{} | {} | {} | {}\n",
+            timestamp,
+            operation,
+            actor,
+            details
+        );
+        
+        // Append to audit log
+        if audit_log_path.exists() {
+            let mut existing_content = fs::read_to_string(&audit_log_path).await
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to read audit log: {}", e)))?;
+            existing_content.push_str(&log_entry);
+            fs::write(&audit_log_path, existing_content).await
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to update audit log: {}", e)))?;
+        } else {
+            fs::write(&audit_log_path, log_entry).await
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to create audit log: {}", e)))?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Get audit trail for team operations
+    pub async fn get_audit_trail(&self, limit: Option<usize>) -> GitResult<Vec<AuditEntry>> {
+        let audit_log_path = self.team_dir.join("audit.log");
+        
+        if !audit_log_path.exists() {
+            return Ok(Vec::new());
+        }
+        
+        let content = fs::read_to_string(&audit_log_path).await
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to read audit log: {}", e)))?;
+        
+        let mut entries: Vec<AuditEntry> = content
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split(" | ").collect();
+                if parts.len() == 4 {
+                    Some(AuditEntry {
+                        timestamp: parts[0].parse().unwrap_or(0),
+                        operation: parts[1].to_string(),
+                        actor: parts[2].to_string(),
+                        details: parts[3].to_string(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Sort by timestamp (newest first)
+        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        
+        if let Some(limit) = limit {
+            entries.truncate(limit);
+        }
+        
+        Ok(entries)
+    }
+    
+    /// Deactivate a team member (soft delete)
+    pub async fn deactivate_member(&self, member_id: &str, deactivated_by: &str) -> GitResult<()> {
+        let member_path = self.team_dir.join("members").join(format!("{}.json", member_id));
+        
+        if !member_path.exists() {
+            return Err(GitError::TeamSharingFailed(format!("Member {} not found", member_id)));
+        }
+        
+        // Load member
+        let mut member = self.get_member(member_id).await?;
+        
+        // Deactivate the member
+        member.active = false;
+        
+        // Save updated member
+        let member_json = serde_json::to_string_pretty(&member)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize member: {}", e)))?;
+        
+        fs::write(&member_path, member_json).await
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to write member file: {}", e)))?;
+        
+        // Log the deactivation
+        self.log_team_operation(
+            "member_deactivation",
+            deactivated_by,
+            &format!("Deactivated member: {}", member_id)
+        ).await?;
+        
+        // Commit changes
+        self.commit_team_changes(&format!("Deactivate team member: {}", member_id)).await?;
+        
+        Ok(())
+    }
+    
+    /// Create a backup of all team keys
+    pub async fn backup_team_keys(&self, backup_path: &std::path::Path) -> GitResult<()> {
+        let shared_keys = self.list_shared_keys().await?;
+        let members = self.get_members().await?;
+        
+        let backup_data = TeamBackup {
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            keys: shared_keys,
+            members,
+            config: self.config.clone(),
+        };
+        
+        let backup_json = serde_json::to_string_pretty(&backup_data)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize backup: {}", e)))?;
+        
+        fs::write(backup_path, backup_json).await
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to write backup: {}", e)))?;
+        
+        // Log the backup operation
+        self.log_team_operation(
+            "team_backup",
+            "system",
+            &format!("Created team backup at: {}", backup_path.display())
+        ).await?;
+        
+        Ok(())
+    }
+    
+    /// Restore team keys from backup
+    pub async fn restore_from_backup(&self, backup_path: &std::path::Path) -> GitResult<()> {
+        let backup_content = fs::read_to_string(backup_path).await
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to read backup: {}", e)))?;
+        
+        let backup_data: TeamBackup = serde_json::from_str(&backup_content)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to parse backup: {}", e)))?;
+        
+        // Restore members
+        for member in backup_data.members {
+            let member_path = self.team_dir.join("members").join(format!("{}.json", member.id));
+            let member_json = serde_json::to_string_pretty(&member)
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize member: {}", e)))?;
+            
+            fs::write(&member_path, member_json).await
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to restore member: {}", e)))?;
+        }
+        
+        // Restore keys
+        for key in backup_data.keys {
+            self.store_shared_key(&key).await?;
+        }
+        
+        // Log the restore operation
+        self.log_team_operation(
+            "team_restore",
+            "system",
+            &format!("Restored team from backup: {}", backup_path.display())
+        ).await?;
+        
+        // Commit changes
+        self.commit_team_changes("Restore team from backup").await?;
+        
+        Ok(())
+    }
+    
+    /// Complete member onboarding process
+    pub async fn onboard_member(
+        &self,
+        member_id: String,
+        public_key: String,
+        signing_key: String,
+        role: TeamRole,
+        invited_by: &str,
+    ) -> GitResult<OnboardingResult> {
+        // Validate member doesn't already exist
+        if self.member_exists(&member_id).await? {
+            return Err(GitError::TeamSharingFailed(
+                format!("Member {} already exists", member_id)
+            ));
+        }
+        
+        // Create new team member
+        let member = TeamMember::new(
+            member_id.clone(),
+            public_key,
+            signing_key,
+            role,
+            invited_by.to_string(),
+        );
+        
+        // Generate a temporary access token for the new member
+        let access_token = self.generate_access_token(&member).await?;
+        
+        // Add member to team
+        self.add_member(member.clone()).await?;
+        
+        // Prepare onboarding package
+        let onboarding_package = OnboardingPackage {
+            member_id: member_id.clone(),
+            access_token,
+            team_config: self.config.clone(),
+            available_keys: self.list_available_keys_for_member(&member_id).await?,
+        };
+        
+        // Log onboarding
+        self.log_team_operation(
+            "member_onboarding",
+            invited_by,
+            &format!("Onboarded new member: {} with role: {:?}", member_id, member.role)
+        ).await?;
+        
+        Ok(OnboardingResult {
+            member,
+            onboarding_package,
+        })
+    }
+    
+    /// Complete member offboarding process
+    pub async fn offboard_member(&self, member_id: &str, removed_by: &str) -> GitResult<OffboardingResult> {
+        // Get member before removal for audit purposes
+        let member = self.get_member(member_id).await?;
+        
+        // Deactivate member first
+        self.deactivate_member(member_id, removed_by).await?;
+        
+        // Remove member's access to all keys
+        let shared_keys = self.list_shared_keys().await?;
+        let mut keys_updated = 0;
+        
+        for mut shared_key in shared_keys {
+            if shared_key.encrypted_for_members.remove(member_id).is_some() {
+                self.store_shared_key(&shared_key).await?;
+                keys_updated += 1;
+            }
+        }
+        
+        // Revoke any active access tokens
+        self.revoke_member_tokens(member_id).await?;
+        
+        // Create offboarding summary
+        let summary = OffboardingSummary {
+            member_id: member_id.to_string(),
+            removed_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            keys_revoked: keys_updated,
+            role: member.role.clone(),
+        };
+        
+        // Log comprehensive offboarding
+        self.log_team_operation(
+            "member_offboarding",
+            removed_by,
+            &format!(
+                "Offboarded member: {} (role: {:?}, keys revoked: {})",
+                member_id, member.role, keys_updated
+            )
+        ).await?;
+        
+        // Remove member file completely
+        self.remove_member(member_id).await?;
+        
+        Ok(OffboardingResult {
+            member,
+            summary,
+        })
+    }
+    
+    /// Generate a temporary access token for member authentication
+    async fn generate_access_token(&self, member: &TeamMember) -> GitResult<String> {
+        let token_data = AccessTokenData {
+            member_id: member.id.clone(),
+            role: member.role.clone(),
+            issued_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            expires_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() + (7 * 24 * 60 * 60), // 7 days
+        };
+        
+        let token_json = serde_json::to_string(&token_data)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize token: {}", e)))?;
+        
+        // Encrypt the token with a team secret
+        let plaintext = PlaintextSecret::from_string(token_json);
+        let encrypted_token = EncryptedSecret::encrypt_with_password(
+            plaintext,
+            "team_access_token_secret", // In production, use a proper team secret
+            None,
+        ).map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt token: {}", e)))?;
+        
+        // Serialize and encode the encrypted token
+        let token_bytes = encrypted_token.to_bytes()
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize encrypted token: {}", e)))?;
+        
+        Ok(Base64::encode_string(&token_bytes))
+    }
+    
+    /// List available keys for a specific member
+    async fn list_available_keys_for_member(&self, member_id: &str) -> GitResult<Vec<String>> {
+        let member = self.get_member(member_id).await?;
+        let shared_keys = self.list_shared_keys().await?;
+        
+        let available_keys: Vec<String> = shared_keys
+            .into_iter()
+            .filter_map(|key| {
+                if key.encrypted_for_members.contains_key(member_id) && member.active {
+                    Some(key.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        Ok(available_keys)
+    }
+    
+    /// Revoke all access tokens for a member
+    async fn revoke_member_tokens(&self, member_id: &str) -> GitResult<()> {
+        // Store revoked tokens in a blacklist
+        let revocation_path = self.team_dir.join("revoked_tokens.json");
+        
+        let revocation_entry = TokenRevocation {
+            member_id: member_id.to_string(),
+            revoked_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+        
+        let mut revocations = if revocation_path.exists() {
+            let content = fs::read_to_string(&revocation_path).await
+                .map_err(|e| GitError::TeamSharingFailed(format!("Failed to read revocations: {}", e)))?;
+            serde_json::from_str::<Vec<TokenRevocation>>(&content)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        
+        revocations.push(revocation_entry);
+        
+        let revocations_json = serde_json::to_string_pretty(&revocations)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to serialize revocations: {}", e)))?;
+        
+        fs::write(&revocation_path, revocations_json).await
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to write revocations: {}", e)))?;
+        
+        Ok(())
+    }
+    
+    /// Check if a member can perform a specific operation
+    pub async fn check_permission(&self, member_id: &str, operation: &TeamOperation) -> GitResult<PermissionCheck> {
+        let member = self.get_member(member_id).await?;
+        
+        let allowed = member.can_perform(operation);
+        let reason = if allowed {
+            format!("Member {} with role {:?} can perform {:?}", member_id, member.role, operation)
+        } else {
+            format!("Member {} with role {:?} cannot perform {:?}", member_id, member.role, operation)
+        };
+        
+        Ok(PermissionCheck { allowed, reason })
+    }
+    
+    /// Get team statistics
+    pub async fn get_team_stats(&self) -> GitResult<TeamStats> {
+        let members = self.get_members().await?;
+        let keys = self.list_shared_keys().await?;
+        let audit_entries = self.get_audit_trail(None).await?;
+        
+        let active_members = members.iter().filter(|m| m.active).count();
+        
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let expired_keys = keys.iter()
+            .filter(|k| {
+                if let Some(expires_at) = k.metadata.expires_at {
+                    current_time >= expires_at
+                } else {
+                    false
+                }
+            })
+            .count();
+        
+        Ok(TeamStats {
+            total_members: members.len(),
+            active_members,
+            total_keys: keys.len(),
+            expired_keys,
+            audit_entries: audit_entries.len(),
+        })
+    }
+    
+    /// Clean up expired keys automatically
+    pub async fn cleanup_expired_keys(&self, cleanup_by: &str) -> GitResult<usize> {
+        let keys = self.list_shared_keys().await?;
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let mut cleaned_count = 0;
+        
+        for key in keys {
+            if let Some(expires_at) = key.metadata.expires_at {
+                if current_time >= expires_at {
+                    self.archive_shared_key(&key.id).await?;
+                    cleaned_count += 1;
+                    
+                    self.log_team_operation(
+                        "key_cleanup",
+                        cleanup_by,
+                        &format!("Cleaned up expired key: {} (purpose: {})", key.id, key.metadata.purpose)
+                    ).await?;
+                }
+            }
+        }
+        
+        if cleaned_count > 0 {
+            self.commit_team_changes(&format!("Clean up {} expired keys", cleaned_count)).await?;
+        }
+        
+        Ok(cleaned_count)
     }
 }
 

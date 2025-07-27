@@ -3,7 +3,7 @@
 use crate::crypto::{CryptoError, CryptoResult, defaults, DerivedKey};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce, aead::{Aead, KeyInit}};
 use serde::{Deserialize, Serialize};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::ZeroizeOnDrop;
 use std::fmt;
 
 /// An encrypted secret that automatically zeroizes plaintext data
@@ -67,7 +67,7 @@ impl fmt::Display for SecretType {
 }
 
 /// Plaintext secret data with automatic zeroization
-#[derive(ZeroizeOnDrop)]
+#[derive(Clone, ZeroizeOnDrop)]
 pub struct PlaintextSecret {
     /// The secret data
     data: Vec<u8>,
