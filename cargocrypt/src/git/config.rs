@@ -4,7 +4,6 @@
 //! including repository setup, integration modes, and feature toggles.
 
 use super::{GitRepo, GitError, GitResult};
-use std::path::{Path, PathBuf};
 use tokio::fs;
 use serde::{Deserialize, Serialize};
 

@@ -25,7 +25,10 @@
 //! ```
 
 // Re-export main types for easy access
-pub use crate::core::{CargoCrypt, CryptoConfig};
+pub use crate::core::{
+    CargoCrypt, CargoCryptBuilder, CryptoConfig, SecretBytes, 
+    ResilienceManager, ResilienceConfig
+};
 pub use crate::crypto::{
     CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret, 
     SecretMetadata, SecretType as CryptoSecretType, PerformanceProfile, EncryptionOptions,
@@ -41,13 +44,19 @@ pub use crate::detection::{
 pub mod core;
 pub mod crypto;
 pub mod error;
+pub mod validation;
+pub mod resilience;
+pub mod monitoring;
 
 // Feature modules
 // pub mod auth;
 pub mod detection;
 pub mod git;
 // pub mod providers;
-pub mod tui;
+pub mod tui {
+    pub mod monitoring;
+}
+pub mod tui_simple;
 
 /// Default configuration that works for most use cases
 ///

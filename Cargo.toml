@@ -1,0 +1,12 @@
+[package]
+name = "cargocrypt-demo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "tui_demo"
+path = "tui_demo.rs"
+
+[dependencies]
+crossterm = "0.27"
+ratatui = "0.24"

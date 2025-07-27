@@ -3,7 +3,15 @@
 //! This module provides comprehensive error handling with actionable error messages
 //! that help developers understand and fix issues quickly.
 
-use std::fmt;
+// use std::fmt; // Currently unused
+
+/// Error severity levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorSeverity {
+    Info,
+    Warning,
+    Critical,
+}
 
 /// Result type alias for CargoCrypt operations
 pub type CryptoResult<T> = Result<T, CargoCryptError>;
@@ -77,6 +85,14 @@ pub enum CargoCryptError {
         #[source]
         source: Option<git2::Error>,
     },
+
+    /// Validation errors
+    #[error("Validation failed: {message}")]
+    Validation {
+        message: String,
+        errors: Vec<String>,
+        warnings: Vec<String>,
+    },
 }
 
 /// Specific kinds of cryptographic errors
@@ -102,6 +118,26 @@ pub enum CryptoErrorKind {
 
 /// Commonly used error constructors for better ergonomics
 impl CargoCryptError {
+    /// Get the severity level of this error
+    pub fn severity(&self) -> ErrorSeverity {
+        match self {
+            CargoCryptError::Crypto { kind, .. } => match kind {
+                CryptoErrorKind::AuthenticationFailed |
+                CryptoErrorKind::Decryption |
+                CryptoErrorKind::InvalidKey => ErrorSeverity::Critical,
+                _ => ErrorSeverity::Warning,
+            },
+            CargoCryptError::Validation { .. } => ErrorSeverity::Warning,
+            CargoCryptError::Auth { .. } => ErrorSeverity::Critical,
+            CargoCryptError::KeyManagement { .. } => ErrorSeverity::Critical,
+            CargoCryptError::Network { .. } => ErrorSeverity::Warning,
+            CargoCryptError::Git { .. } => ErrorSeverity::Warning,
+            CargoCryptError::Io { .. } => ErrorSeverity::Warning,
+            CargoCryptError::Config { .. } => ErrorSeverity::Info,
+            CargoCryptError::Project { .. } => ErrorSeverity::Info,
+            CargoCryptError::Serialization { .. } => ErrorSeverity::Warning,
+        }
+    }
     /// Create a project not found error with helpful suggestion
     pub fn project_not_found() -> Self {
         Self::Project {
@@ -306,6 +342,15 @@ impl From<git2::Error> for CargoCryptError {
     }
 }
 
+impl From<crate::git::GitError> for CargoCryptError {
+    fn from(error: crate::git::GitError) -> Self {
+        Self::Git {
+            message: format!("Git integration failed: {}", error),
+            source: None,
+        }
+    }
+}
+
 /// Error kind enumeration for programmatic error handling
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
@@ -342,6 +387,7 @@ impl CargoCryptError {
             CargoCryptError::Project { .. } => ErrorKind::Project,
             CargoCryptError::KeyManagement { .. } => ErrorKind::KeyManagement,
             CargoCryptError::Serialization { .. } => ErrorKind::Serialization,
+            CargoCryptError::Validation { .. } => ErrorKind::Config,
         }
     }
 }

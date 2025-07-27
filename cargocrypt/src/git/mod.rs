@@ -25,9 +25,8 @@ pub use team::{TeamKeySharing, TeamMember, KeyShareConfig};
 pub use ignore::{GitIgnoreManager, IgnorePattern, IgnoreConfig};
 pub use config::{GitCryptConfig, RepositorySetup, IntegrationMode};
 
-use crate::crypto::{CryptoEngine, CryptoResult, EncryptedSecret};
-use crate::error::CargoCryptError;
-use git2::{Repository, Signature, ObjectType, Oid};
+use crate::crypto::{CryptoEngine, EncryptedSecret};
+use git2::{Repository, Signature};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -225,7 +224,7 @@ impl GitIntegration {
             .map_err(|e| GitError::Io(e))?;
         
         // Encrypt the data
-        let encrypted = self.crypto.encrypt_data(&content, password)
+        let encrypted = self.crypto.encrypt_data(&content, password).await
             .map_err(GitError::Crypto)?;
         
         // Create encrypted file path
@@ -331,8 +330,8 @@ pub mod utils {
     }
     
     /// Check if a file should be encrypted based on git attributes
-    pub fn should_encrypt<P: AsRef<Path>>(repo_path: P, file_path: P) -> GitResult<bool> {
-        let repo = Repository::open(repo_path)?;
+    pub fn should_encrypt<P: AsRef<Path>>(repo_path: P, _file_path: P) -> GitResult<bool> {
+        let _repo = Repository::open(repo_path)?;
         // TODO: Check git attributes for encryption patterns
         Ok(false) // Placeholder
     }

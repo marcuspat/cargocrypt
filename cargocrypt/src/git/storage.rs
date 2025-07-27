@@ -5,13 +5,12 @@
 //! It supports git-native patterns for storing and retrieving encrypted data.
 
 use super::{GitRepo, GitError, GitResult};
-use crate::crypto::{CryptoEngine, EncryptedSecret, PlaintextSecret, SecretMetadata, CryptoResult, EncryptionOptions};
-use git2::{Repository, Oid, ObjectType, Blob, Tree, TreeBuilder, Signature};
+use crate::crypto::{CryptoEngine, EncryptedSecret};
+use git2::{Oid, ObjectType, Signature};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::fs;
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64, Encoding};
 
 /// Configuration for encrypted storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +67,7 @@ pub struct StorageMetadata {
 /// Encrypted storage manager for Git repositories
 pub struct EncryptedStorage {
     repo: GitRepo,
+    #[allow(dead_code)]
     crypto: CryptoEngine,
     config: StorageConfig,
 }
@@ -100,12 +100,12 @@ impl EncryptedStorage {
         let signature = self.get_signature()?;
         
         // Create empty tree for storage
-        let mut tree_builder = git_repo.treebuilder(None)?;
+        let tree_builder = git_repo.treebuilder(None)?;
         let tree_oid = tree_builder.write()?;
         let tree = git_repo.find_tree(tree_oid)?;
         
         // Create initial commit for storage
-        let commit_oid = git_repo.commit(
+        let _commit_oid = git_repo.commit(
             Some(&self.config.storage_ref),
             &signature,
             &signature,
@@ -351,7 +351,6 @@ impl EncryptedStorage {
     /// Compress data using built-in compression
     fn compress_data(&self, data: &[u8]) -> GitResult<Vec<u8>> {
         use std::io::Write;
-        use std::io::prelude::*;
         
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(data)
@@ -539,6 +538,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     use crate::crypto::{PlaintextSecret, SecretType};
+    use crate::EncryptionOptions;
     
     #[tokio::test]
     async fn test_encrypted_storage_creation() {

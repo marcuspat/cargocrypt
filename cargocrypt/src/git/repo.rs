@@ -3,8 +3,7 @@
 //! This module provides the GitRepo struct which handles all git repository
 //! operations including initialization, file staging, and CargoCrypt configuration.
 
-use super::{GitError, GitResult};
-use git2::{Repository, Index, IndexAddOption, Status, StatusOptions, Signature, Oid, ObjectType};
+use git2::{Repository, Status, StatusOptions, Signature, Oid};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use thiserror::Error;
