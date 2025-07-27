@@ -7,11 +7,18 @@ pub mod engine;
 pub mod keys;
 pub mod secrets;
 pub mod errors;
+pub mod algorithm;
+pub mod store;
+pub mod mock;
+pub mod security;
 
 pub use engine::{CryptoEngine, PerformanceProfile, EncryptionOptions, PerformanceBenchmark, BatchEncryptionResult};
 pub use keys::{DerivedKey, KeyDerivationParams, SecureRandom};
 pub use secrets::{EncryptedSecret, PlaintextSecret, SecretMetadata, SecretType};
 pub use errors::{CryptoError, CryptoResult};
+pub use algorithm::{Algorithm, AlgorithmExt};
+pub use store::{SecretStore, MemorySecretStore};
+pub use security::{SecureBuffer, SecureRandom as SecurityRandom, TimingDefense, KeyDerivationValidator, constant_time_compare};
 
 // Re-export commonly used types
 pub use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};

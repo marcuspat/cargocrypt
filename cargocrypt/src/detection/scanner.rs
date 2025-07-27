@@ -10,7 +10,7 @@ use crate::detection::{
     rules::RuleEngine
 };
 use crate::error::{CargoCryptError, CryptoResult};
-use ignore::{Walk, WalkBuilder};
+use ignore::WalkBuilder;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -338,6 +338,7 @@ impl FileScanner {
     /// Scan content for secrets
     pub fn scan_content(&self, content: &str, file_path: &Path) -> CryptoResult<Vec<Finding>> {
         let mut findings = Vec::new();
+        let mut found_positions = std::collections::HashSet::new();
 
         // 1. Pattern-based detection
         let pattern_matches = self.pattern_registry.find_all_matches(content);
@@ -354,12 +355,17 @@ impl FileScanner {
                 line_info.column_number,
             );
 
-            // Adjust confidence based on context
+            // Calculate multi-factor confidence score
+            let base_confidence = pattern_match.base_confidence;
             let context_text = context_lines.join(" ");
-            let adjusted_confidence = self.adjust_confidence_with_context(
-                pattern_match.base_confidence,
+            let entropy_result = self.entropy_analyzer.analyze(&pattern_match.matched_text);
+            
+            let adjusted_confidence = self.calculate_composite_confidence(
+                base_confidence,
                 &pattern_match.matched_text,
                 &context_text,
+                &entropy_result,
+                file_path,
             );
 
             let finding = Finding::new(
@@ -369,16 +375,20 @@ impl FileScanner {
                 "pattern_matcher".to_string(),
             )
             .with_context_lines(context_lines)
-            .with_entropy_score(
-                self.entropy_analyzer.analyze(&pattern_match.matched_text).shannon_entropy
-            );
+            .with_entropy_score(entropy_result.shannon_entropy);
 
             findings.push(finding);
+            found_positions.insert((pattern_match.start, pattern_match.end));
         }
 
         // 2. Custom rule-based detection
         let rule_matches = self.rule_engine.execute_rules(content, Some(&file_path.to_string_lossy()))?;
         for rule_match in rule_matches {
+            // Skip if already found
+            if found_positions.contains(&(rule_match.start, rule_match.end)) {
+                continue;
+            }
+
             let line_info = self.get_line_info(content, rule_match.start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
             
@@ -391,52 +401,94 @@ impl FileScanner {
                 line_info.column_number,
             );
 
+            let entropy_result = self.entropy_analyzer.analyze(&rule_match.matched_text);
+            let context_text = context_lines.join(" ");
+            
+            let adjusted_confidence = self.calculate_composite_confidence(
+                rule_match.confidence,
+                &rule_match.matched_text,
+                &context_text,
+                &entropy_result,
+                file_path,
+            );
+
             let finding = Finding::new(
                 file_path.to_path_buf(),
                 secret,
-                rule_match.confidence,
+                adjusted_confidence,
                 rule_match.rule_id,
+            )
+            .with_context_lines(context_lines)
+            .with_entropy_score(entropy_result.shannon_entropy);
+
+            findings.push(finding);
+            found_positions.insert((rule_match.start, rule_match.end));
+        }
+
+        // 3. Advanced high-entropy string detection
+        let entropy_findings = self.detect_high_entropy_secrets(content, &found_positions);
+        for (substring, start, entropy_result) in entropy_findings {
+            let line_info = self.get_line_info(content, start);
+            let context_lines = self.get_context_lines(content, line_info.line_number, 2);
+            let context_text = context_lines.join(" ");
+            
+            let secret = FoundSecret::new(
+                substring.clone(),
+                self.classify_entropy_secret(&substring, &entropy_result),
+                start,
+                start + substring.len(),
+                line_info.line_number,
+                line_info.column_number,
+            );
+
+            let adjusted_confidence = self.calculate_composite_confidence(
+                entropy_result.confidence,
+                &substring,
+                &context_text,
+                &entropy_result,
+                file_path,
+            );
+
+            let finding = Finding::new(
+                file_path.to_path_buf(),
+                secret,
+                adjusted_confidence,
+                "entropy_analyzer".to_string(),
+            )
+            .with_context_lines(context_lines)
+            .with_entropy_score(entropy_result.shannon_entropy);
+
+            findings.push(finding);
+        }
+
+        // 4. Contextual pattern detection (looks for secrets near keywords)
+        let contextual_findings = self.detect_contextual_secrets(content, &found_positions);
+        for (text, start, end, confidence) in contextual_findings {
+            let line_info = self.get_line_info(content, start);
+            let context_lines = self.get_context_lines(content, line_info.line_number, 2);
+            
+            let secret = FoundSecret::new(
+                text,
+                "contextual_pattern".to_string(),
+                start,
+                end,
+                line_info.line_number,
+                line_info.column_number,
+            );
+
+            let finding = Finding::new(
+                file_path.to_path_buf(),
+                secret,
+                confidence,
+                "contextual_analyzer".to_string(),
             )
             .with_context_lines(context_lines);
 
             findings.push(finding);
         }
 
-        // 3. High-entropy string detection
-        let entropy_candidates = self.entropy_analyzer.extract_high_entropy_substrings(content, 12);
-        for (substring, entropy_result) in entropy_candidates {
-            // Skip if already found by pattern matching
-            if findings.iter().any(|f| f.secret.value.contains(&substring)) {
-                continue;
-            }
-
-            if let Some(start) = content.find(&substring) {
-                let line_info = self.get_line_info(content, start);
-                let context_lines = self.get_context_lines(content, line_info.line_number, 2);
-                
-                let secret = FoundSecret::new(
-                    substring.clone(),
-                    "high_entropy".to_string(),
-                    start,
-                    start + substring.len(),
-                    line_info.line_number,
-                    line_info.column_number,
-                );
-
-                let finding = Finding::new(
-                    file_path.to_path_buf(),
-                    secret,
-                    entropy_result.confidence,
-                    "entropy_analyzer".to_string(),
-                )
-                .with_context_lines(context_lines)
-                .with_entropy_score(entropy_result.shannon_entropy);
-
-                findings.push(finding);
-            }
-        }
-
-        // Sort findings by confidence (highest first)
+        // Remove duplicates and sort by confidence
+        self.deduplicate_findings(&mut findings);
         findings.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
 
         Ok(findings)
@@ -565,6 +617,429 @@ impl FileScanner {
 
         confidence.max(0.0).min(1.0)
     }
+
+    /// Calculate composite confidence score using multiple factors
+    fn calculate_composite_confidence(
+        &self,
+        base_confidence: f64,
+        matched_text: &str,
+        context: &str,
+        entropy_result: &crate::detection::entropy::EntropyResult,
+        file_path: &Path,
+    ) -> f64 {
+        let mut confidence = base_confidence;
+        
+        // Factor 1: Context-based adjustment
+        confidence = self.adjust_confidence_with_context(confidence, matched_text, context);
+        
+        // Factor 2: Entropy-based adjustment
+        if entropy_result.shannon_entropy > 0.0 {
+            if entropy_result.shannon_entropy < 2.5 {
+                confidence *= 0.7; // Low entropy reduces confidence
+            } else if entropy_result.shannon_entropy > 4.5 {
+                confidence *= 1.1; // High entropy increases confidence
+            }
+        }
+        
+        // Factor 3: Length-based adjustment
+        let length = matched_text.len();
+        if length < 8 {
+            confidence *= 0.6; // Very short strings are less likely to be secrets
+        } else if length > 40 && length < 100 {
+            confidence *= 1.05; // Typical secret length
+        } else if length > 200 {
+            confidence *= 0.8; // Very long strings might be data, not secrets
+        }
+        
+        // Factor 4: Character diversity
+        let char_types = self.count_character_types(matched_text);
+        if char_types >= 3 {
+            confidence *= 1.1; // Good character diversity
+        } else if char_types == 1 {
+            confidence *= 0.7; // Single character type
+        }
+        
+        // Factor 5: File type adjustment
+        if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+            match ext.to_lowercase().as_str() {
+                // Configuration files - higher likelihood
+                "env" | "config" | "conf" | "ini" | "toml" | "yaml" | "yml" => confidence *= 1.2,
+                // Source code - medium likelihood
+                "rs" | "py" | "js" | "go" | "java" | "php" | "rb" => confidence *= 1.0,
+                // Documentation - lower likelihood
+                "md" | "txt" | "rst" | "doc" => confidence *= 0.7,
+                // Test files - much lower likelihood
+                _ if file_path.to_string_lossy().contains("test") => confidence *= 0.5,
+                _ => {}
+            }
+        }
+        
+        // Factor 6: Known false positive patterns
+        if self.is_likely_false_positive(matched_text) {
+            confidence *= 0.3;
+        }
+        
+        confidence.max(0.0).min(1.0)
+    }
+
+    /// Detect high-entropy secrets using advanced algorithms
+    fn detect_high_entropy_secrets(
+        &self,
+        content: &str,
+        found_positions: &std::collections::HashSet<(usize, usize)>,
+    ) -> Vec<(String, usize, crate::detection::entropy::EntropyResult)> {
+        let mut results = Vec::new();
+        
+        // Split content into tokens for analysis
+        let tokens = self.tokenize_content(content);
+        
+        for (token, start_pos) in tokens {
+            // Skip if already found
+            let end_pos = start_pos + token.len();
+            if found_positions.iter().any(|(s, e)| {
+                (start_pos >= *s && start_pos < *e) || (end_pos > *s && end_pos <= *e)
+            }) {
+                continue;
+            }
+            
+            // Skip very short tokens
+            if token.len() < 8 {
+                continue;
+            }
+            
+            let entropy_result = self.entropy_analyzer.analyze(&token);
+            
+            // Advanced entropy analysis
+            if entropy_result.is_likely_secret {
+                // Additional validation for high-entropy strings
+                if self.validate_entropy_candidate(&token, &entropy_result) {
+                    results.push((token, start_pos, entropy_result));
+                }
+            }
+        }
+        
+        // Also look for base64-encoded secrets
+        let base64_candidates = self.find_base64_candidates(content, found_positions);
+        for (candidate, start_pos) in base64_candidates {
+            let entropy_result = self.entropy_analyzer.analyze(&candidate);
+            if entropy_result.confidence > 0.6 {
+                results.push((candidate, start_pos, entropy_result));
+            }
+        }
+        
+        results
+    }
+
+    /// Detect secrets based on contextual clues
+    fn detect_contextual_secrets(
+        &self,
+        content: &str,
+        found_positions: &std::collections::HashSet<(usize, usize)>,
+    ) -> Vec<(String, usize, usize, f64)> {
+        let mut results = Vec::new();
+        
+        // Keywords that often precede secrets
+        let secret_keywords = [
+            ("password", r#"[:\s=]+["']?([^"'\s]{8,})["']?"#),
+            ("api_key", r#"[:\s=]+["']?([A-Za-z0-9_\-]{20,})["']?"#),
+            ("secret", r#"[:\s=]+["']?([A-Za-z0-9_\-]{12,})["']?"#),
+            ("token", r#"[:\s=]+["']?([A-Za-z0-9_\-]{20,})["']?"#),
+            ("auth", r#"[:\s=]+["']?([A-Za-z0-9_\-]{16,})["']?"#),
+            ("credential", r#"[:\s=]+["']?([^"'\s]{10,})["']?"#),
+            ("private_key", r#"[:\s=]+["']?([A-Za-z0-9+/=]{40,})["']?"#),
+        ];
+        
+        for (keyword, pattern) in &secret_keywords {
+            let regex_pattern = format!(r"(?i){}{}", keyword, pattern);
+            if let Ok(regex) = regex::Regex::new(&regex_pattern) {
+                for cap in regex.captures_iter(content) {
+                    if let Some(secret_match) = cap.get(1) {
+                        let start = secret_match.start();
+                        let end = secret_match.end();
+                        
+                        // Skip if already found
+                        if found_positions.contains(&(start, end)) {
+                            continue;
+                        }
+                        
+                        let matched_text = secret_match.as_str();
+                        
+                        // Validate the candidate
+                        if self.validate_contextual_candidate(matched_text, keyword) {
+                            let confidence = self.calculate_contextual_confidence(matched_text, keyword);
+                            results.push((matched_text.to_string(), start, end, confidence));
+                        }
+                    }
+                }
+            }
+        }
+        
+        results
+    }
+
+    /// Classify entropy-based secret type
+    fn classify_entropy_secret(
+        &self,
+        text: &str,
+        entropy_result: &crate::detection::entropy::EntropyResult,
+    ) -> String {
+        // Check for common patterns
+        if text.starts_with("AKIA") {
+            return "aws_access_key".to_string();
+        }
+        if text.starts_with("sk_") || text.starts_with("pk_") {
+            return "api_key".to_string();
+        }
+        if text.len() == 40 && text.chars().all(|c| c.is_ascii_hexdigit()) {
+            return "sha1_hash_or_token".to_string();
+        }
+        if text.len() == 64 && text.chars().all(|c| c.is_ascii_hexdigit()) {
+            return "sha256_hash_or_token".to_string();
+        }
+        
+        // Check character composition
+        let has_uppercase = text.chars().any(|c| c.is_ascii_uppercase());
+        let has_lowercase = text.chars().any(|c| c.is_ascii_lowercase());
+        let has_digits = text.chars().any(|c| c.is_ascii_digit());
+        let has_special = text.chars().any(|c| !c.is_ascii_alphanumeric());
+        
+        if has_uppercase && has_lowercase && has_digits && has_special {
+            return "high_entropy_password".to_string();
+        }
+        
+        if entropy_result.charset_size > 50 {
+            return "high_entropy_token".to_string();
+        }
+        
+        "high_entropy_string".to_string()
+    }
+
+    /// Remove duplicate findings
+    fn deduplicate_findings(&self, findings: &mut Vec<Finding>) {
+        let mut seen = std::collections::HashSet::new();
+        findings.retain(|f| {
+            let key = (
+                f.file_path.clone(),
+                f.secret.start_position,
+                f.secret.end_position,
+            );
+            seen.insert(key)
+        });
+    }
+
+    /// Count character types in a string
+    fn count_character_types(&self, text: &str) -> usize {
+        let has_lowercase = text.chars().any(|c| c.is_ascii_lowercase());
+        let has_uppercase = text.chars().any(|c| c.is_ascii_uppercase());
+        let has_digits = text.chars().any(|c| c.is_ascii_digit());
+        let has_special = text.chars().any(|c| !c.is_ascii_alphanumeric());
+        
+        [has_lowercase, has_uppercase, has_digits, has_special]
+            .iter()
+            .filter(|&&x| x)
+            .count()
+    }
+
+    /// Check if a string is likely a false positive
+    fn is_likely_false_positive(&self, text: &str) -> bool {
+        let text_lower = text.to_lowercase();
+        
+        // Common false positive patterns
+        let false_positive_patterns = [
+            "aaaaaaa", "bbbbbbb", "1234567", "abcdefg",
+            "qwertyu", "password", "12345678", "87654321",
+            "00000000", "11111111", "ffffffff", "deadbeef",
+            "cafebabe", "test1234", "admin123", "user1234",
+        ];
+        
+        for pattern in &false_positive_patterns {
+            if text_lower.contains(pattern) {
+                return true;
+            }
+        }
+        
+        // Check for repeated characters
+        if text.len() >= 8 {
+            let first_char = text.chars().next().unwrap();
+            if text.chars().all(|c| c == first_char) {
+                return true;
+            }
+        }
+        
+        // Check for sequential patterns
+        if self.is_sequential_pattern(text) {
+            return true;
+        }
+        
+        false
+    }
+
+    /// Tokenize content into analyzable units
+    fn tokenize_content(&self, content: &str) -> Vec<(String, usize)> {
+        let mut tokens = Vec::new();
+        let mut current_token = String::new();
+        let mut start_pos = 0;
+        let mut in_token = false;
+        
+        for (i, ch) in content.char_indices() {
+            if ch.is_alphanumeric() || "-_+/=".contains(ch) {
+                if !in_token {
+                    start_pos = i;
+                    in_token = true;
+                }
+                current_token.push(ch);
+            } else {
+                if in_token && current_token.len() >= 8 {
+                    tokens.push((current_token.clone(), start_pos));
+                }
+                current_token.clear();
+                in_token = false;
+            }
+        }
+        
+        // Don't forget the last token
+        if in_token && current_token.len() >= 8 {
+            tokens.push((current_token, start_pos));
+        }
+        
+        tokens
+    }
+
+    /// Find base64-encoded candidates
+    fn find_base64_candidates(
+        &self,
+        content: &str,
+        found_positions: &std::collections::HashSet<(usize, usize)>,
+    ) -> Vec<(String, usize)> {
+        let mut candidates = Vec::new();
+        let base64_regex = regex::Regex::new(r"[A-Za-z0-9+/]{20,}={0,2}").unwrap();
+        
+        for m in base64_regex.find_iter(content) {
+            let start = m.start();
+            let end = m.end();
+            
+            if found_positions.iter().any(|(s, e)| {
+                (start >= *s && start < *e) || (end > *s && end <= *e)
+            }) {
+                continue;
+            }
+            
+            let candidate = m.as_str();
+            
+            // Validate base64
+            if candidate.len() % 4 == 0 || (candidate.len() % 4 == 2 && candidate.ends_with("==")) ||
+               (candidate.len() % 4 == 3 && candidate.ends_with("=")) {
+                candidates.push((candidate.to_string(), start));
+            }
+        }
+        
+        candidates
+    }
+
+    /// Validate entropy candidate
+    fn validate_entropy_candidate(
+        &self,
+        text: &str,
+        entropy_result: &crate::detection::entropy::EntropyResult,
+    ) -> bool {
+        // Must have good entropy
+        if entropy_result.shannon_entropy < 3.5 {
+            return false;
+        }
+        
+        // Must have reasonable character diversity
+        if entropy_result.charset_size < 10 {
+            return false;
+        }
+        
+        // Must not be a known false positive
+        if self.is_likely_false_positive(text) {
+            return false;
+        }
+        
+        // Additional checks for very high entropy
+        if entropy_result.shannon_entropy > 5.5 {
+            // Very high entropy might be compressed data or binary
+            // Check if it's printable ASCII
+            if !text.chars().all(|c| c.is_ascii_graphic() || c.is_ascii_whitespace()) {
+                return false;
+            }
+        }
+        
+        true
+    }
+
+    /// Validate contextual candidate
+    fn validate_contextual_candidate(&self, text: &str, keyword: &str) -> bool {
+        // Must not be a placeholder
+        let placeholders = ["your", "my", "insert", "replace", "change", "enter", "here"];
+        for placeholder in &placeholders {
+            if text.to_lowercase().contains(placeholder) {
+                return false;
+            }
+        }
+        
+        // Must have minimum complexity for certain keywords
+        match keyword {
+            "password" => self.count_character_types(text) >= 2,
+            "api_key" | "token" => text.len() >= 20,
+            "secret" => text.len() >= 12,
+            _ => true,
+        }
+    }
+
+    /// Calculate confidence for contextual findings
+    fn calculate_contextual_confidence(&self, text: &str, keyword: &str) -> f64 {
+        let mut confidence = 0.6; // Base confidence for contextual findings
+        
+        // Adjust based on keyword
+        match keyword {
+            "password" | "private_key" => confidence += 0.15,
+            "api_key" | "token" | "secret" => confidence += 0.1,
+            _ => {}
+        }
+        
+        // Adjust based on complexity
+        let char_types = self.count_character_types(text);
+        confidence += (char_types as f64) * 0.05;
+        
+        // Adjust based on length
+        if text.len() > 30 {
+            confidence += 0.1;
+        }
+        
+        // Check entropy
+        let entropy_result = self.entropy_analyzer.analyze(text);
+        if entropy_result.shannon_entropy > 4.0 {
+            confidence += 0.1;
+        }
+        
+        confidence.min(0.95)
+    }
+
+    /// Check if text is a sequential pattern
+    fn is_sequential_pattern(&self, text: &str) -> bool {
+        if text.len() < 4 {
+            return false;
+        }
+        
+        let chars: Vec<char> = text.chars().collect();
+        
+        // Check for ascending/descending sequences
+        let mut ascending = true;
+        let mut descending = true;
+        
+        for i in 1..chars.len() {
+            if chars[i] as u32 != chars[i-1] as u32 + 1 {
+                ascending = false;
+            }
+            if chars[i] as u32 != chars[i-1] as u32 - 1 {
+                descending = false;
+            }
+        }
+        
+        ascending || descending
+    }
 }
 
 /// Line information for positioning
@@ -600,10 +1075,10 @@ mod tests {
         // In practice, we'd create temporary files with different extensions
     }
 
-    #[tokio::test]
-    async fn test_scan_content() {
+    #[test]
+    fn test_scan_content() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nSECRET=my_secret_value";
+        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nSECRET=my_secret_value_123";
         let path = Path::new("test.env");
         
         let findings = scanner.scan_content(content, path).unwrap();
@@ -611,6 +1086,12 @@ mod tests {
         
         // Should find the AWS key
         assert!(findings.iter().any(|f| f.secret.value.contains("AKIA")));
+        
+        // Should have confidence scores
+        for finding in &findings {
+            assert!(finding.confidence > 0.0);
+            assert!(finding.confidence <= 1.0);
+        }
     }
 
     #[test]
@@ -652,5 +1133,124 @@ mod tests {
             "production config secret",
         );
         assert!(adjusted > 0.7);
+    }
+
+    #[test]
+    fn test_entropy_detection() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = "password=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        let path = Path::new("config.env");
+        
+        let findings = scanner.scan_content(content, path).unwrap();
+        assert!(!findings.is_empty());
+        
+        // Should classify high-entropy strings
+        let high_entropy_finding = findings.iter()
+            .find(|f| f.secret.secret_type.contains("entropy") || f.secret.secret_type.contains("password"));
+        assert!(high_entropy_finding.is_some());
+    }
+
+    #[test]
+    fn test_contextual_detection() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = "api_key = sk_live_abcdef1234567890\ntoken: ghp_1234567890abcdef1234567890abcdef12345678";
+        let path = Path::new("config.rs");
+        
+        let findings = scanner.scan_content(content, path).unwrap();
+        assert!(!findings.is_empty());
+        
+        // Should find contextual patterns
+        let contextual_finding = findings.iter()
+            .find(|f| f.detector_name == "contextual_analyzer");
+        // Note: may or may not find contextual patterns depending on existing pattern matches
+    }
+
+    #[test]
+    fn test_false_positive_detection() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        
+        // Should identify common false positives
+        assert!(scanner.is_likely_false_positive("aaaaaaaaaa"));
+        assert!(scanner.is_likely_false_positive("1234567890"));
+        assert!(scanner.is_likely_false_positive("abcdefghij"));
+        assert!(scanner.is_likely_false_positive("password123"));
+        
+        // Should not flag legitimate-looking secrets
+        assert!(!scanner.is_likely_false_positive("AKIAIOSFODNN7EXAMPLE"));
+        assert!(!scanner.is_likely_false_positive("sk_live_abcdef1234567890"));
+    }
+
+    #[test]
+    fn test_character_type_counting() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        
+        assert_eq!(scanner.count_character_types("abc"), 1); // only lowercase
+        assert_eq!(scanner.count_character_types("ABC"), 1); // only uppercase
+        assert_eq!(scanner.count_character_types("123"), 1); // only digits
+        assert_eq!(scanner.count_character_types("Abc"), 2); // upper + lower
+        assert_eq!(scanner.count_character_types("Abc123"), 3); // upper + lower + digits
+        assert_eq!(scanner.count_character_types("Abc123!"), 4); // all types
+    }
+
+    #[test]
+    fn test_sequential_pattern_detection() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        
+        assert!(scanner.is_sequential_pattern("abcd"));
+        assert!(scanner.is_sequential_pattern("1234"));
+        assert!(scanner.is_sequential_pattern("dcba"));
+        assert!(scanner.is_sequential_pattern("4321"));
+        
+        assert!(!scanner.is_sequential_pattern("abdc"));
+        assert!(!scanner.is_sequential_pattern("1324"));
+        assert!(!scanner.is_sequential_pattern("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn test_tokenization() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = "key=AKIAIOSFODNN7EXAMPLE value=\"wJalrXUtnFEMI/K7MDENG\"";
+        
+        let tokens = scanner.tokenize_content(content);
+        
+        // Should extract meaningful tokens
+        assert!(tokens.iter().any(|(token, _)| token.contains("AKIA")));
+        assert!(tokens.iter().any(|(token, _)| token.contains("wJalrXUtnFEMI")));
+        
+        // All tokens should be at least 8 characters
+        for (token, _) in &tokens {
+            assert!(token.len() >= 8);
+        }
+    }
+
+    #[test]
+    fn test_base64_detection() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = "secret=dGVzdF9zZWNyZXRfa2V5XzEyMzQ1Njc4OTA=";
+        let found_positions = std::collections::HashSet::new();
+        
+        let candidates = scanner.find_base64_candidates(content, &found_positions);
+        assert!(!candidates.is_empty());
+        
+        // Should find base64-encoded content
+        let base64_candidate = candidates.iter()
+            .find(|(candidate, _)| candidate.contains("dGVzdF"));
+        assert!(base64_candidate.is_some());
+    }
+
+    #[test]
+    fn test_deduplication() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        let path = Path::new("test.env");
+        
+        let findings = scanner.scan_content(content, path).unwrap();
+        
+        // Should not have duplicate findings for the same position
+        let mut positions = std::collections::HashSet::new();
+        for finding in &findings {
+            let key = (finding.secret.start_position, finding.secret.end_position);
+            assert!(positions.insert(key), "Duplicate finding at same position");
+        }
     }
 }

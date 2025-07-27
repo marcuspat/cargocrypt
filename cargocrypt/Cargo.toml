@@ -1,13 +1,13 @@
 [package]
 name = "cargocrypt"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["CargoCrypt Team"]
-description = "Zero-config cryptographic operations for Rust projects"
+description = "Zero-config cryptographic operations for Rust projects with HIVE MIND collective intelligence"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/marcuspat/cargocrypt"
 homepage = "https://github.com/marcuspat/cargocrypt"
-keywords = ["cryptography", "security", "cli", "rust", "zero-config"]
+keywords = ["cryptography", "security", "cli", "rust", "hive-mind"]
 categories = ["command-line-utilities", "cryptography", "development-tools"]
 readme = "README.md"
 
@@ -40,6 +40,7 @@ rustls-webpki = "0.102"
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
 
 # Git operations (used by cargo-audit, cargo-deny)
 git2 = "0.18"
@@ -67,6 +68,10 @@ ignore = "0.4"  # Respect .gitignore like ripgrep
 regex = "1.10"
 rayon = "1.8"  # For parallel scanning
 
+# System information
+num_cpus = "1.16"
+chrono = "0.4"
+
 # Compression for git storage
 flate2 = "1.0"
 
@@ -79,6 +84,7 @@ assert_cmd = "2.0"
 predicates = "3.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"
+futures = "0.3"
 
 [[bench]]
 name = "crypto_bench"

@@ -229,7 +229,7 @@ impl GitAttributes {
     }
     
     /// Configure git filters for automatic clean/smudge
-    pub async fn configure_filters(&self, git_config: &GitCryptConfig) -> GitResult<()> {
+    pub async fn configure_filters(&self, _git_config: &GitCryptConfig) -> GitResult<()> {
         if !self.config.enable_filters {
             return Ok(());
         }

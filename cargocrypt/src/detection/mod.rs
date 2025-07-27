@@ -49,7 +49,7 @@ pub use rules::{CustomRule, RuleEngine, RuleType};
 pub use scanner::{FileScanner, ScanResult};
 pub use findings::{Finding, ConfidenceLevel, FoundSecret};
 
-use crate::error::{CargoCryptError, CryptoResult};
+use crate::error::CryptoResult;
 use std::path::Path;
 
 /// Quick scan function for detecting secrets in a single file

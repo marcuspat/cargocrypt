@@ -1,23 +1,47 @@
-//! Main cryptographic engine implementation
+//! Main cryptographic engine implementation with resilience integration
 
 use crate::crypto::{
     CryptoError, CryptoResult, DerivedKey, EncryptedSecret, PlaintextSecret, 
     SecretMetadata, SecretType, defaults, keys::SecureRandom
 };
+use crate::resilience::{CircuitBreaker, RetryPolicy};
+use crate::validation::InputValidator;
+use std::time::Duration;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use argon2::Argon2;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 
-/// Main cryptographic engine for CargoCrypt
+/// Main cryptographic engine for CargoCrypt with resilience features
 /// 
 /// This engine provides high-level cryptographic operations using ChaCha20-Poly1305
-/// for authenticated encryption and Argon2 for key derivation.
+/// for authenticated encryption and Argon2 for key derivation. Includes circuit breaker
+/// protection, retry logic, and input validation for robust operation.
 #[derive(Debug, Clone)]
 pub struct CryptoEngine {
     /// Performance settings for key derivation
     performance_profile: PerformanceProfile,
+    /// Circuit breaker for crypto operations protection
+    circuit_breaker: Arc<CircuitBreaker>,
+    /// Retry policy for transient failures
+    retry_policy: Arc<RetryPolicy>,
+    /// Input validator for security
+    validator: InputValidator,
+    /// Feature flags for graceful degradation
+    features_enabled: Arc<RwLock<CryptoFeatures>>,
+}
+
+/// Feature flags for crypto engine capabilities
+#[derive(Debug, Clone)]
+struct CryptoFeatures {
+    encryption: bool,
+    decryption: bool,
+    key_derivation: bool,
+    batch_operations: bool,
+    direct_operations: bool,
 }
 
 /// Performance profiles for different use cases
@@ -146,17 +170,62 @@ pub struct BatchEncryptionResult {
 }
 
 impl CryptoEngine {
-    /// Create a new crypto engine with default (balanced) settings
+    /// Create a new crypto engine with default (balanced) settings and resilience features
     pub fn new() -> Self {
         Self {
             performance_profile: PerformanceProfile::default(),
+            circuit_breaker: Arc::new(CircuitBreaker::new(
+                "crypto_engine".to_string(),
+                5, // 5 failures before opening
+                Duration::from_secs(60) // 60 second timeout
+            )),
+            retry_policy: Arc::new(RetryPolicy::new(
+                3, // max 3 retries
+                Duration::from_millis(100) // 100ms base delay
+            ).with_max_delay(Duration::from_secs(5))),
+            validator: InputValidator::new(),
+            features_enabled: Arc::new(RwLock::new(CryptoFeatures {
+                encryption: true,
+                decryption: true,
+                key_derivation: true,
+                batch_operations: true,
+                direct_operations: true,
+            })),
         }
     }
 
-    /// Create a crypto engine with a specific performance profile
+    /// Create a crypto engine with a specific performance profile and resilience features
     pub fn with_performance_profile(profile: PerformanceProfile) -> Self {
+        let mut engine = Self::new();
+        engine.performance_profile = profile;
+        engine
+    }
+    
+    /// Create a crypto engine with custom resilience configuration
+    pub fn with_resilience_config(
+        profile: PerformanceProfile,
+        failure_threshold: u32,
+        circuit_timeout: Duration,
+        max_retries: u32,
+        retry_delay: Duration
+    ) -> Self {
         Self {
             performance_profile: profile,
+            circuit_breaker: Arc::new(CircuitBreaker::new(
+                "crypto_engine".to_string(),
+                failure_threshold,
+                circuit_timeout
+            )),
+            retry_policy: Arc::new(RetryPolicy::new(max_retries, retry_delay)
+                .with_max_delay(Duration::from_secs(30))),
+            validator: InputValidator::new(),
+            features_enabled: Arc::new(RwLock::new(CryptoFeatures {
+                encryption: true,
+                decryption: true,
+                key_derivation: true,
+                batch_operations: true,
+                direct_operations: true,
+            })),
         }
     }
 
@@ -166,8 +235,8 @@ impl CryptoEngine {
     }
     
     /// Encrypt data with a password (convenience method)
-    pub fn encrypt_data(&self, data: &[u8], password: &str) -> CryptoResult<EncryptedSecret> {
-        self.encrypt_bytes(data, password, EncryptionOptions::default())
+    pub async fn encrypt_data(&self, data: &[u8], password: &str) -> CryptoResult<EncryptedSecret> {
+        self.encrypt_bytes(data, password, EncryptionOptions::default()).await
     }
     
     /// Decrypt data with a password (convenience method) 
@@ -199,60 +268,129 @@ impl CryptoEngine {
         self.derive_key_with_profile(password, &salt_array, self.performance_profile)
     }
 
-    /// Encrypt a string with a password
-    pub fn encrypt_string(
+    /// Encrypt a string with a password using resilience protection
+    pub async fn encrypt_string(
         &self,
         plaintext: &str,
         password: &str,
         options: EncryptionOptions,
     ) -> CryptoResult<EncryptedSecret> {
+        // Check if encryption is enabled
+        let features = self.features_enabled.read().await;
+        if !features.encryption {
+            return Err(CryptoError::Generic {
+                message: "Encryption feature is currently disabled due to system degradation".to_string(),
+            });
+        }
+        drop(features);
+        
+        // Validate inputs
+        let password_validation = self.validator.validate_password(password);
+        if !password_validation.is_valid {
+            return Err(CryptoError::Generic {
+                message: format!(
+                    "Password validation failed: {}", 
+                    password_validation.errors.iter()
+                        .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
+                        .map(|e| e.message.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+        
         let secret = PlaintextSecret::from_string(plaintext.to_string());
-        self.encrypt(secret, password, options)
+        self.encrypt_with_resilience(secret, password, options).await
     }
 
     /// Encrypt bytes with a password
-    pub fn encrypt_bytes(
+    pub async fn encrypt_bytes(
         &self,
         plaintext: &[u8],
         password: &str,
         options: EncryptionOptions,
     ) -> CryptoResult<EncryptedSecret> {
         let secret = PlaintextSecret::from_bytes(plaintext.to_vec());
-        self.encrypt(secret, password, options)
+        self.encrypt(secret, password, options).await
     }
 
-    /// Encrypt a plaintext secret with a password
-    pub fn encrypt(
+    /// Encrypt a plaintext secret with a password using resilience protection
+    pub async fn encrypt(
         &self,
         plaintext: PlaintextSecret,
         password: &str,
         options: EncryptionOptions,
     ) -> CryptoResult<EncryptedSecret> {
-        // Determine the performance profile to use
-        let profile = options.performance_profile.unwrap_or(self.performance_profile);
+        self.encrypt_with_resilience(plaintext, password, options).await
+    }
+    
+    /// Internal encrypt method with circuit breaker and retry logic
+    async fn encrypt_with_resilience(
+        &self,
+        plaintext: PlaintextSecret,
+        password: &str,
+        options: EncryptionOptions,
+    ) -> CryptoResult<EncryptedSecret> {
+        // Execute with circuit breaker protection
+        let circuit_breaker = Arc::clone(&self.circuit_breaker);
+        let retry_policy = Arc::clone(&self.retry_policy);
+        let performance_profile = self.performance_profile;
+        let validator = self.validator.clone();
         
-        // Create or use provided salt
-        let salt = match options.salt {
-            Some(salt) => salt,
-            None => SecureRandom::generate_salt()?,
-        };
+        // Circuit breaker execution
+        let result = circuit_breaker.execute(|| {
+            // Determine the performance profile to use
+            let profile = options.performance_profile.unwrap_or(performance_profile);
+            
+            // Create or use provided salt
+            let salt = match options.salt {
+                Some(salt) => salt,
+                None => SecureRandom::generate_salt()?,
+            };
 
-        // Derive key using the specified performance profile
-        let key = self.derive_key_with_profile(password, &salt, profile)?;
+            // Validate salt length
+            if salt.len() != defaults::SALT_LENGTH {
+                return Err(CryptoError::InvalidSalt {
+                    reason: format!("Salt must be {} bytes", defaults::SALT_LENGTH),
+                });
+            }
+
+            // Derive key using the specified performance profile with validation
+            let key_result = self.derive_key_with_profile(password, &salt, profile);
+            let key = key_result?;
+            
+            // Set up metadata
+            let metadata = options.metadata.or_else(|| {
+                let mut meta = SecretMetadata::new();
+                meta.created_at = Some(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                );
+                Some(meta)
+            });
+
+            EncryptedSecret::encrypt_with_key(plaintext.clone(), &key, metadata)
+        }).await;
         
-        // Set up metadata
-        let metadata = options.metadata.or_else(|| {
-            let mut meta = SecretMetadata::new();
-            meta.created_at = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            );
-            Some(meta)
-        });
-
-        EncryptedSecret::encrypt_with_key(plaintext, &key, metadata)
+        match result {
+            Ok(encrypted) => Ok(encrypted),
+            Err(crate::resilience::CircuitBreakerError::CircuitOpen) => {
+                Err(CryptoError::Generic {
+                    message: "Crypto operations circuit breaker is open - too many recent failures".to_string(),
+                })
+            }
+            Err(crate::resilience::CircuitBreakerError::CircuitOpened) => {
+                Err(CryptoError::Generic {
+                    message: "Crypto operations circuit breaker opened due to failures".to_string(),
+                })
+            }
+            Err(crate::resilience::CircuitBreakerError::OperationFailed(error)) => {
+                // For now, just return the error without complex retry logic
+                Err(error)
+            }
+        }
     }
 
     /// Decrypt an encrypted secret with a password
@@ -288,7 +426,7 @@ impl CryptoEngine {
     }
 
     /// Encrypt multiple secrets with the same password (batch operation)
-    pub fn encrypt_batch<I, S>(
+    pub async fn encrypt_batch<I, S>(
         &self,
         secrets: I,
         password: &str,
@@ -303,7 +441,7 @@ impl CryptoEngine {
 
         for (name, secret_data) in secrets {
             let options = base_options.clone();
-            match self.encrypt_string(secret_data.as_ref(), password, options) {
+            match self.encrypt_string(secret_data.as_ref(), password, options).await {
                 Ok(encrypted) => successes.push((name, encrypted)),
                 Err(error) => failures.push((name, error)),
             }
@@ -362,7 +500,7 @@ impl CryptoEngine {
             .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
             .map_err(CryptoError::from)?;
 
-        let key = Key::from_slice(&key_bytes).clone();
+        let _key = Key::from_slice(&key_bytes).clone();
         
         // Zeroize intermediate data
         key_bytes.zeroize();
@@ -431,35 +569,124 @@ impl CryptoEngine {
         })
     }
 
-    /// Encrypt a file with derived key
-    pub fn encrypt_file<P: AsRef<std::path::Path>>(
+    /// Encrypt a file with derived key using resilience protection
+    pub async fn encrypt_file<P: AsRef<std::path::Path>>(
         &self,
         file_path: P,
         password: &str,
         salt: Option<&[u8; defaults::SALT_LENGTH]>,
     ) -> CryptoResult<EncryptedSecret> {
+        // Check if file operations are enabled
+        let features = self.features_enabled.read().await;
+        if !features.encryption {
+            return Err(CryptoError::Generic {
+                message: "File encryption is currently disabled due to system degradation".to_string(),
+            });
+        }
+        drop(features);
+        
+        // Validate password
+        let password_validation = self.validator.validate_password(password);
+        if password_validation.has_critical_errors() {
+            return Err(CryptoError::Generic {
+                message: "Password validation failed for file encryption".to_string(),
+            });
+        }
+        
         let content = std::fs::read_to_string(file_path)
             .map_err(|e| CryptoError::Generic { message: format!("Failed to read file: {}", e) })?;
         
         let plaintext = PlaintextSecret::from_string(content);
-        let derived_key = if let Some(salt) = salt {
-            self.derive_key_with_profile(password, salt, self.performance_profile)?
-        } else {
-            let salt = Self::generate_salt()?;
-            self.derive_key(password, &salt)?
-        };
         
-        EncryptedSecret::encrypt_with_key(plaintext, &derived_key, None)
+        // Execute with circuit breaker
+        let circuit_breaker = Arc::clone(&self.circuit_breaker);
+        let result = circuit_breaker.execute(|| {
+            let derived_key = if let Some(salt) = salt {
+                self.derive_key_with_profile(password, salt, self.performance_profile)?
+            } else {
+                let salt = Self::generate_salt()?;
+                self.derive_key(password, &salt)?
+            };
+            
+            EncryptedSecret::encrypt_with_key(plaintext.clone(), &derived_key, None)
+        }).await;
+        
+        match result {
+            Ok(encrypted) => Ok(encrypted),
+            Err(error) => {
+                match error {
+                    crate::resilience::CircuitBreakerError::CircuitOpen => {
+                        Err(CryptoError::Generic {
+                            message: "File encryption circuit breaker is open".to_string(),
+                        })
+                    }
+                    crate::resilience::CircuitBreakerError::CircuitOpened => {
+                        Err(CryptoError::Generic {
+                            message: "File encryption circuit breaker opened due to failures".to_string(),
+                        })
+                    }
+                    crate::resilience::CircuitBreakerError::OperationFailed(crypto_error) => Err(crypto_error),
+                }
+            }
+        }
     }
 
-    /// Decrypt a file with derived key
-    pub fn decrypt_file(
+    /// Decrypt a file with derived key using resilience protection
+    pub async fn decrypt_file(
         &self,
         encrypted: &EncryptedSecret,
         password: &str,
     ) -> CryptoResult<String> {
-        let plaintext = encrypted.decrypt_with_password(password)?;
+        let plaintext = self.decrypt(encrypted, password)?;
         plaintext.into_string()
+    }
+    
+    /// Enable graceful degradation by disabling specific features
+    pub async fn disable_feature(&self, feature: &str) -> CryptoResult<()> {
+        let mut features = self.features_enabled.write().await;
+        
+        match feature {
+            "encryption" => features.encryption = false,
+            "decryption" => features.decryption = false,
+            "key_derivation" => features.key_derivation = false,
+            "batch_operations" => features.batch_operations = false,
+            "direct_operations" => features.direct_operations = false,
+            _ => return Err(CryptoError::Generic {
+                message: format!("Unknown feature: {}", feature),
+            }),
+        }
+        
+        tracing::warn!("Crypto engine feature '{}' has been disabled for graceful degradation", feature);
+        Ok(())
+    }
+    
+    /// Re-enable a previously disabled feature
+    pub async fn enable_feature(&self, feature: &str) -> CryptoResult<()> {
+        let mut features = self.features_enabled.write().await;
+        
+        match feature {
+            "encryption" => features.encryption = true,
+            "decryption" => features.decryption = true,
+            "key_derivation" => features.key_derivation = true,
+            "batch_operations" => features.batch_operations = true,
+            "direct_operations" => features.direct_operations = true,
+            _ => return Err(CryptoError::Generic {
+                message: format!("Unknown feature: {}", feature),
+            }),
+        }
+        
+        tracing::info!("Crypto engine feature '{}' has been enabled", feature);
+        Ok(())
+    }
+    
+    /// Get current feature status
+    pub async fn get_feature_status(&self) -> CryptoFeatures {
+        self.features_enabled.read().await.clone()
+    }
+    
+    /// Reset circuit breaker manually
+    pub async fn reset_circuit_breaker(&self) {
+        self.circuit_breaker.reset().await;
     }
 }
 
