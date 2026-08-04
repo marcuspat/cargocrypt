@@ -1,14 +1,12 @@
 # 🔐 CargoCrypt
 
-**Production-ready cryptographic operations for Rust projects with HIVE MIND collective intelligence**
+**Zero-config cryptographic operations for Rust projects**
 
-CargoCrypt is a next-generation secret management tool designed specifically for Rust developers. It provides zero-config setup, git-native integration, and memory-safe cryptography powered by ChaCha20-Poly1305, now enhanced with HIVE MIND collective intelligence for advanced automation and team collaboration.
+CargoCrypt is a secret management tool designed specifically for Rust developers. It provides zero-config setup, git-native integration, and memory-safe cryptography powered by ChaCha20-Poly1305.
 
 ## ✨ Current Implementation Status
 
-**🎉 PRODUCTION READY - v0.2.0 Released!**
-
-✅ **Fully Implemented Features:**
+✅ **Implemented:**
 - **Complete cryptographic system** with ChaCha20-Poly1305 and Argon2id
 - **Full-featured TUI interface** with file browser and directory traversal
 - **Advanced secret detection** with entropy analysis and ML pattern training
@@ -18,14 +16,8 @@ CargoCrypt is a next-generation secret management tool designed specifically for
 - **Security hardening** with timing attack prevention and secure memory management
 - **Team collaboration features** with secure key distribution
 - **Complete CLI command set** with all documented functionality
-- **Comprehensive test suite** with 47/47 tests passing
 
-🚀 **HIVE MIND Features:**
-- **Collective intelligence system** for enhanced security and automation
-- **Adaptive learning** from user patterns and security events
-- **Distributed decision making** for team environments
-- **Self-healing workflows** with automatic issue resolution
-- **Performance optimization** through neural pattern recognition
+⚠️ **Known issue (Aug 2026):** the test suite does not currently compile cleanly (`cargo test --no-run` fails), so the test-suite claims below cannot currently be verified. Treat this as a project under active repair, not a fully validated production release.
 
 ## 🚀 Quick Start
 
@@ -69,14 +61,7 @@ cargocrypt config
 - **Argon2id** key derivation with adaptive memory costs
 - **Automatic memory zeroization** of sensitive data
 - **Constant-time operations** for timing attack prevention
-- **Multiple security profiles** (Fast, Balanced, Secure, Paranoid)
-
-### 🐝 **HIVE MIND Collective Intelligence**
-- **Adaptive topology** switching between hierarchical, mesh, and ring patterns
-- **Neural pattern recognition** for security anomaly detection
-- **Collective decision making** with Byzantine fault tolerance
-- **Self-healing systems** with automatic error recovery
-- **Performance optimization** through machine learning
+- **Multiple security profiles** (Fast, Balanced, Secure, Paranoid) -- note: `Paranoid` currently falls back to `Balanced` parameters (known bug, not yet fixed)
 
 ### 🎨 **Beautiful Developer Experience**
 - **Zero-configuration setup** - works immediately after install
@@ -188,38 +173,28 @@ pre_commit_hooks = true         # Automatic secret scanning
 
 ## 🏗️ Architecture
 
-CargoCrypt implements a **distributed, collective intelligence architecture**:
+CargoCrypt's components:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        HIVE MIND COLLECTIVE INTELLIGENCE             │
-├─────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ Hierarchical│  │    Mesh     │  │    Ring     │  │ Adaptive    │  │
-│  │ Coordinator │  │ Coordinator │  │ Coordinator │  │ Coordinator │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Developer     │    │   Git Repo      │    │   Team Members  │
 │                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
 │ │ CargoCrypt  │ │◄──►│ │ Encrypted   │ │◄──►│ │ CargoCrypt  │ │
-│ │ + HIVE MIND │ │    │ │ Secrets     │ │    │ │ + HIVE MIND │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-│                 │    │                 │    │                 │
+│ └─────────────┘ │    │ │ Secrets     │ │    │ └─────────────┘ │
+│                 │    │ └─────────────┘ │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ Neural      │ │    │ │ Team Keys   │ │    │ │ Collective  │ │
-│ │ Patterns    │ │    │ │ + ML Models │ │    │ │ Learning    │ │
+│ │ Team Keys   │ │    │ │ Team Keys   │ │    │ │ Team Keys   │ │
 │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## 🧪 Testing & Quality Assurance
 
-CargoCrypt maintains **100% test coverage** with comprehensive validation:
+CargoCrypt's test suite covers the following areas, though as noted above it does not currently compile cleanly:
 
 ```bash
-# Run comprehensive test suite (47/47 tests pass)
+# Run test suite (currently fails to compile -- see Known issue above)
 cd cargocrypt && cargo test
 
 # Run performance benchmarks
@@ -230,6 +205,7 @@ cargo run --example performance_test --release
 ```
 
 ### Test Coverage
+_(Areas the suite is designed to cover -- see the Known issue note above; these cannot currently be verified as passing since the suite does not compile.)_
 - ✅ **Basic commands** - Help, version, error handling
 - ✅ **File operations** - Encryption/decryption with various file types
 - ✅ **Password security** - Edge cases, special characters, validation
@@ -255,7 +231,7 @@ CargoCrypt follows **defense-in-depth security principles**:
 - **Access control** - Role-based permissions for team environments
 - **Audit logging** - Comprehensive operation tracking
 - **Secure defaults** - Fail-secure configuration throughout
-- **Team security** - Distributed trust with Byzantine fault tolerance
+- **Team security** - Shared access via encrypted git-based key distribution
 
 ### Security Status
 ```bash
@@ -271,7 +247,7 @@ cargocrypt git install-hooks  # Automatic scanning on commit
 
 ## 🤝 Contributing
 
-We welcome contributions! CargoCrypt is now in **stable production release**.
+We welcome contributions! See the Known issue note above for the current state of the test suite before relying on it in CI.
 
 ### Development Workflow
 ```bash
@@ -315,7 +291,6 @@ at your option.
 
 ## 🙏 Acknowledgments
 
-- **HIVE MIND Architecture** - Inspired by collective intelligence research
 - **Rust Cryptography Community** - Ring, ChaCha20-Poly1305, Argon2 teams
 - **Ratatui Community** - Beautiful terminal interfaces
 - **Git Community** - Integration patterns and workflows
@@ -323,6 +298,6 @@ at your option.
 
 ---
 
-**🐝 Collective Intelligence. 🔒 Maximum Security. 🦀 Pure Rust.**
+**🔒 Memory-Safe Cryptography. 🦀 Pure Rust.**
 
-**Built with ❤️ and HIVE MIND intelligence for the Rust community.**
+**Built with ❤️ for the Rust community.**
