@@ -4,6 +4,12 @@
 
 CargoCrypt is a secret management tool designed specifically for Rust developers. It provides zero-config setup, git-native integration, and memory-safe cryptography powered by ChaCha20-Poly1305.
 
+## 🎬 Demo
+
+![cargocrypt encrypting and decrypting a .env with password prompts](demo.gif)
+
+*Full roundtrip — init, encrypt, decrypt — recorded from the actual binary with [asciinema](https://asciinema.org) + [agg](https://github.com/asciinema/agg).*
+
 ## ✨ Current Implementation Status
 
 ✅ **Implemented:**
