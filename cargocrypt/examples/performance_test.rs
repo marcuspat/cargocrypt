@@ -4,7 +4,8 @@
 use cargocrypt::crypto::{CryptoEngine, EncryptionOptions, PerformanceProfile};
 use std::time::Instant;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("🚀 CargoCrypt Performance Test");
     println!("{}", "=".repeat(60));
     
@@ -31,7 +32,7 @@ fn main() {
         
         // Measure encryption
         let start = Instant::now();
-        let encrypted = engine.encrypt_bytes(&data, password, EncryptionOptions::new()).unwrap();
+        let encrypted = engine.encrypt_bytes(&data, password, EncryptionOptions::new()).await.unwrap();
         let encrypt_time = start.elapsed();
         
         // Measure decryption
@@ -76,7 +77,7 @@ fn main() {
         
         // Measure key derivation + small encryption
         let start = Instant::now();
-        let _encrypted = engine.encrypt_bytes(small_data, password, options).unwrap();
+        let _encrypted = engine.encrypt_bytes(small_data, password, options).await.unwrap();
         let kdf_time = start.elapsed();
         
         // Get memory requirement from profile
@@ -134,7 +135,7 @@ fn main() {
     let test_data = vec![0u8; 1024 * 1024]; // 1MB
     let before_mem = get_memory_usage();
     
-    let _encrypted = engine.encrypt_bytes(&test_data, password, EncryptionOptions::new()).unwrap();
+    let _encrypted = engine.encrypt_bytes(&test_data, password, EncryptionOptions::new()).await.unwrap();
     let after_encrypt = get_memory_usage();
     
     println!("Memory overhead for 1MB encryption: ~{:.2} MB", 
