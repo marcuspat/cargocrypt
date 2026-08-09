@@ -78,7 +78,10 @@ mod tests {
         let store = MemorySecretStore::new();
         
         // Test store and retrieve
-        let secret = EncryptedSecret::default();
+        let secret = crate::crypto::CryptoEngine::new()
+            .encrypt_string("test-secret", "test_password", crate::crypto::EncryptionOptions::new())
+            .await
+            .unwrap();
         store.store("test", secret.clone()).await.unwrap();
         
         let retrieved = store.retrieve("test").await.unwrap();

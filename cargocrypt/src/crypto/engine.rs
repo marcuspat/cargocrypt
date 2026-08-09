@@ -740,20 +740,20 @@ impl PerformanceBenchmark {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_crypto_engine_basic_operations() {
+    #[tokio::test]
+    async fn test_crypto_engine_basic_operations() {
         let engine = CryptoEngine::new();
         let plaintext = "Hello, World!";
         let password = "test_password";
         
-        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).unwrap();
+        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
         let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
         
         assert_eq!(plaintext, decrypted);
     }
 
-    #[test]
-    fn test_performance_profiles() {
+    #[tokio::test]
+    async fn test_performance_profiles() {
         let profiles = [
             PerformanceProfile::Fast,
             PerformanceProfile::Balanced,
@@ -766,15 +766,15 @@ mod tests {
             let plaintext = "Test data";
             let password = "test_password";
             
-            let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).unwrap();
+            let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
             let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
             
             assert_eq!(plaintext, decrypted);
         }
     }
 
-    #[test]
-    fn test_batch_encryption() {
+    #[tokio::test]
+    async fn test_batch_encryption() {
         let engine = CryptoEngine::new();
         let secrets = vec![
             ("api_key".to_string(), "sk-1234567890"),
@@ -783,7 +783,7 @@ mod tests {
         ];
         
         let password = "master_password";
-        let result = engine.encrypt_batch(secrets, password, EncryptionOptions::new());
+        let result = engine.encrypt_batch(secrets, password, EncryptionOptions::new()).await;
         
         assert_eq!(result.successes.len(), 3);
         assert_eq!(result.failures.len(), 0);
@@ -796,14 +796,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_password_change() {
+    #[tokio::test]
+    async fn test_password_change() {
         let engine = CryptoEngine::new();
         let plaintext = "Secret data";
         let old_password = "old_password";
         let new_password = "new_password";
         
-        let encrypted = engine.encrypt_string(plaintext, old_password, EncryptionOptions::new()).unwrap();
+        let encrypted = engine.encrypt_string(plaintext, old_password, EncryptionOptions::new()).await.unwrap();
         let reencrypted = engine.change_password(&encrypted, old_password, new_password).unwrap();
         
         // Old password should not work
@@ -829,8 +829,8 @@ mod tests {
         assert_eq!(plaintext, decrypted.as_slice());
     }
 
-    #[test]
-    fn test_encryption_options() {
+    #[tokio::test]
+    async fn test_encryption_options() {
         let engine = CryptoEngine::new();
         let plaintext = "Test with options";
         let password = "test_password";
@@ -840,7 +840,7 @@ mod tests {
             .with_type(SecretType::ApiKey)
             .with_performance_profile(PerformanceProfile::Fast);
         
-        let encrypted = engine.encrypt_string(plaintext, password, options).unwrap();
+        let encrypted = engine.encrypt_string(plaintext, password, options).await.unwrap();
         let metadata = encrypted.metadata();
         
         assert_eq!(metadata.description.as_ref().unwrap(), "Test secret");
@@ -872,14 +872,14 @@ mod tests {
         assert!(benchmark.total_ms > 0.0);
     }
 
-    #[test]
-    fn test_wrong_password_fails() {
+    #[tokio::test]
+    async fn test_wrong_password_fails() {
         let engine = CryptoEngine::new();
         let plaintext = "Secret data";
         let password = "correct_password";
         let wrong_password = "wrong_password";
         
-        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).unwrap();
+        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
         
         assert!(!engine.verify_password(&encrypted, wrong_password));
         
