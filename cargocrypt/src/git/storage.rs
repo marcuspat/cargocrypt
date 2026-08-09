@@ -565,7 +565,7 @@ mod tests {
         
         // Create test secret
         let plaintext = PlaintextSecret::new("test-secret".as_bytes().to_vec());
-        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
+        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).await.unwrap();
         
         // Store in git
         let file_path = Path::new("test.secret");
@@ -591,7 +591,7 @@ mod tests {
         // Store multiple files
         for i in 0..3 {
             let plaintext = PlaintextSecret::new(format!("secret-{}", i).as_bytes().to_vec());
-            let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
+            let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).await.unwrap();
             let file_name = format!("test{}.secret", i);
             let file_path = Path::new(&file_name);
             storage.store(file_path, &encrypted).await.unwrap();
@@ -613,7 +613,7 @@ mod tests {
         
         // Store a test file
         let plaintext = PlaintextSecret::new("test-secret".as_bytes().to_vec());
-        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).unwrap();
+        let encrypted = crypto.encrypt(plaintext, "test_password", EncryptionOptions::default()).await.unwrap();
         let file_path = Path::new("test.secret");
         storage.store(file_path, &encrypted).await.unwrap();
         
