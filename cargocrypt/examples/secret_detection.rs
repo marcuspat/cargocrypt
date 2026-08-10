@@ -1,4 +1,4 @@
-//! Example demonstrating the ML-based secret detection system
+//! Example demonstrating CargoCrypt's secret detection system
 //!
 //! This example shows how to use CargoCrypt's secret detection capabilities
 //! to scan files and directories for potential secrets, API keys, and tokens.
@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize the secret detector
     let detector = SecretDetector::new();
-    println!("✅ Initialized ML-based secret detector\n");
+    println!("✅ Initialized secret detector\n");
 
     // Example 1: Scan content directly
     println!("📝 Example 1: Scanning text content");
@@ -92,7 +92,7 @@ PORT=3000
     println!("• SSH Private Keys (-----BEGIN ... PRIVATE KEY-----)");
     println!("• Database Connection Strings (postgresql://, mysql://, etc.)");
     println!("• JWT Tokens (eyJ...)");
-    println!("• High-entropy strings (detected via ML)");
+    println!("• High-entropy strings (entropy scoring)");
     println!("• Environment variable secrets");
     println!();
 
@@ -101,7 +101,7 @@ PORT=3000
     println!("----------------------------------------");
     println!("• Parallel scanning for large repositories");
     println!("• <1 second scan time for entire repositories");
-    println!("• <5% false positive rate with ML training");
+    println!("• Confidence scoring to reduce false positives (not independently benchmarked)");
     println!("• Smart file filtering (respects .gitignore)");
     println!("• Configurable confidence thresholds");
     println!("• Custom rule support");
@@ -110,16 +110,16 @@ PORT=3000
     // Example 5: Integration examples
     println!("🔧 Example 5: Integration examples");
     println!("----------------------------------");
-    println!("
+    println!("{}", r#"
 // Scan a single file
-let findings = detector.scan_file(\"config.env\", &options).await?;
+let findings = detector.scan_file("config.env", &options).await?;
 
-// Scan entire directory  
-let findings = detector.scan_directory(\".\", &options).await?;
+// Scan entire directory
+let findings = detector.scan_directory(".", &options).await?;
 
 // Generate comprehensive report
-let report = detector.generate_report(\".\", &options).await?;
-println!(\"Report: {}\", report.summary());
+let report = detector.generate_report(".", &options).await?;
+println!("Report: {}", report.summary());
 
 // Custom detection config
 let custom_config = DetectionConfig {
@@ -131,7 +131,7 @@ let custom_config = DetectionConfig {
 };
 
 let custom_detector = SecretDetector::with_config(custom_config);
-");
+"#);
 
     println!("🎯 Example 6: Real-world usage patterns");
     println!("---------------------------------------");
@@ -143,8 +143,8 @@ let custom_detector = SecretDetector::with_config(custom_config);
     println!("• Developer education and training");
     println!();
 
-    println!("✨ Detection system successfully demonstrated!");
-    println!("   Ready for production use with enterprise-grade accuracy.");
+    println!("✨ Detection system demo complete.");
+    println!("   See README.md for this project's current status before relying on it in production.");
 
     Ok(())
 }

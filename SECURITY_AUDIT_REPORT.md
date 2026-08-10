@@ -97,7 +97,7 @@ Running CargoCrypt's own pattern-based detector against these files does flag th
 
 **Self-assessed status**: no real secrets or credentials found in this review. All detected patterns appear to be legitimate test data, examples, and documentation. **This has not been independently verified by a third party** — treat it as the maintainer's own read of the GitHub secret-scanning alerts, not an external audit or certification.
 
-No action was identified as necessary from this specific review. This document says nothing about the project's overall production-readiness — see the main [`README.md`](README.md) for that (short version: the test suite does not currently compile; treat the project as under active repair).
+No action was identified as necessary from this specific review (the GitHub secret-scanning false-positive question). This document says nothing about the project's overall production-readiness — see the main [`README.md`](README.md) for that (short version, updated 2026-08-10: the test suite now compiles and 118/135 tests pass, but the entropy-based secret-detection path — the actual core of what this tool does — is among the parts currently failing its own tests; read the README's Testing section before relying on this for real secret detection).
 
 ---
 
