@@ -1,7 +1,7 @@
-//! ML-trained secret detection patterns
+//! Secret detection patterns
 //!
-//! This module contains patterns trained on real-world secret leaks to minimize
-//! false positives while maintaining high recall rates.
+//! This module contains regex-based patterns modeled on real-world secret leak
+//! formats to minimize false positives while maintaining high recall rates.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};

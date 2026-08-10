@@ -3,11 +3,11 @@ name = "cargocrypt"
 version = "0.2.0"
 edition = "2021"
 authors = ["CargoCrypt Team"]
-description = "Zero-config cryptographic operations for Rust projects with HIVE MIND collective intelligence"
+description = "Zero-config cryptographic operations for Rust projects"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/marcuspat/cargocrypt"
 homepage = "https://github.com/marcuspat/cargocrypt"
-keywords = ["cryptography", "security", "cli", "rust", "hive-mind"]
+keywords = ["cryptography", "security", "cli", "rust", "encryption"]
 categories = ["command-line-utilities", "cryptography", "development-tools"]
 readme = "README.md"
 

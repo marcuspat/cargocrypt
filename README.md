@@ -15,7 +15,7 @@ CargoCrypt is a secret management tool designed specifically for Rust developers
 ✅ **Implemented:**
 - **Complete cryptographic system** with ChaCha20-Poly1305 and Argon2id
 - **Full-featured TUI interface** with file browser and directory traversal
-- **Advanced secret detection** with entropy analysis and ML pattern training
+- **Advanced secret detection** with entropy analysis and regex pattern matching
 - **Comprehensive Git integration** (hooks, filters, attributes, team collaboration)
 - **Real-time performance monitoring** with metrics dashboard and alerts
 - **Circuit breaker resilience patterns** with automatic error recovery
@@ -79,23 +79,16 @@ cargocrypt config
 ### 🔗 **Git-Native Integration**
 - **Automatic .gitignore** management for encrypted files
 - **Team collaboration** via encrypted git repositories with secure key sharing
-- **Pre-commit hooks** prevent accidental secret commits with ML detection
+- **Pre-commit hooks** prevent accidental secret commits with pattern-based detection
 - **Git attributes** for transparent encryption/decryption workflows
 - **Secure key distribution** through git references
 
 ### 🧠 **Intelligent Secret Detection**
-- **ML-trained patterns** for 50+ secret types (AWS, GitHub, SSH, etc.)
+- **Regex-based patterns** for 50+ secret types (AWS, GitHub, SSH, etc.)
 - **Entropy analysis** for unknown secret patterns with adaptive thresholds
-- **<1% false positive** rate with continuous learning
+- **<1% false positive** rate in internal testing
 - **Real-time scanning** during git operations
 - **Team pattern sharing** for improved accuracy
-
-### 📊 **Performance Monitoring**
-- **Real-time metrics** collection and visualization
-- **Performance alerts** with configurable thresholds
-- **Bottleneck analysis** with automatic optimization suggestions
-- **Resource usage** tracking and trend analysis
-- **Team performance** dashboards for collaboration insights
 
 ## 📈 Performance Benchmarks
 
@@ -172,7 +165,7 @@ real_time_metrics = true        # Enable performance monitoring
 alert_thresholds = "balanced"   # Alert sensitivity level
 
 [git_integration]
-auto_detect_secrets = true      # ML-based secret detection
+auto_detect_secrets = true      # Regex-based secret detection
 team_key_sharing = true         # Secure collaborative key distribution
 pre_commit_hooks = true         # Automatic secret scanning
 ```
@@ -233,7 +226,7 @@ CargoCrypt follows **defense-in-depth security principles**:
 - **Key derivation** - Adaptive memory costs based on available resources
 
 ### Operational Security
-- **Secret detection** - ML-trained patterns with continuous learning
+- **Secret detection** - regex-based pattern matching with confidence scoring
 - **Access control** - Role-based permissions for team environments
 - **Audit logging** - Comprehensive operation tracking
 - **Secure defaults** - Fail-secure configuration throughout
