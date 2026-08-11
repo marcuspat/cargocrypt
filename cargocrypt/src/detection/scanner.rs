@@ -463,13 +463,13 @@ impl FileScanner {
 
         // 4. Contextual pattern detection (looks for secrets near keywords)
         let contextual_findings = self.detect_contextual_secrets(content, &found_positions);
-        for (text, start, end, confidence) in contextual_findings {
+        for (keyword, text, start, end, confidence) in contextual_findings {
             let line_info = self.get_line_info(content, start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
-            
+
             let secret = FoundSecret::new(
                 text,
-                "contextual_pattern".to_string(),
+                format!("contextual_{}", keyword),
                 start,
                 end,
                 line_info.line_number,
@@ -731,13 +731,18 @@ impl FileScanner {
     }
 
     /// Detect secrets based on contextual clues
+    ///
+    /// Returns `(keyword, matched_text, start, end, confidence)` -- the
+    /// triggering keyword is included (rather than discarded) so callers can
+    /// classify the resulting finding by what kind of secret it looks like
+    /// (e.g. "password", "api_key") instead of a single generic label.
     fn detect_contextual_secrets(
         &self,
         content: &str,
         found_positions: &std::collections::HashSet<(usize, usize)>,
-    ) -> Vec<(String, usize, usize, f64)> {
+    ) -> Vec<(String, String, usize, usize, f64)> {
         let mut results = Vec::new();
-        
+
         // Keywords that often precede secrets
         let secret_keywords = [
             ("password", r#"[:\s=]+["']?([^"'\s]{8,})["']?"#),
@@ -748,7 +753,7 @@ impl FileScanner {
             ("credential", r#"[:\s=]+["']?([^"'\s]{10,})["']?"#),
             ("private_key", r#"[:\s=]+["']?([A-Za-z0-9+/=]{40,})["']?"#),
         ];
-        
+
         for (keyword, pattern) in &secret_keywords {
             let regex_pattern = format!(r"(?i){}{}", keyword, pattern);
             if let Ok(regex) = regex::Regex::new(&regex_pattern) {
@@ -756,24 +761,24 @@ impl FileScanner {
                     if let Some(secret_match) = cap.get(1) {
                         let start = secret_match.start();
                         let end = secret_match.end();
-                        
+
                         // Skip if already found
                         if found_positions.contains(&(start, end)) {
                             continue;
                         }
-                        
+
                         let matched_text = secret_match.as_str();
-                        
+
                         // Validate the candidate
                         if self.validate_contextual_candidate(matched_text, keyword) {
                             let confidence = self.calculate_contextual_confidence(matched_text, keyword);
-                            results.push((matched_text.to_string(), start, end, confidence));
+                            results.push((keyword.to_string(), matched_text.to_string(), start, end, confidence));
                         }
                     }
                 }
             }
         }
-        
+
         results
     }
 
@@ -843,21 +848,30 @@ impl FileScanner {
     /// Check if a string is likely a false positive
     fn is_likely_false_positive(&self, text: &str) -> bool {
         let text_lower = text.to_lowercase();
-        
-        // Common false positive patterns
+
+        // Common false positive patterns. Note: this deliberately excludes
+        // short "keyboard sequence" fillers like "1234567", "12345678",
+        // "87654321", "abcdefg" and "qwertyu" as *substrings* to match
+        // against. A real, high-entropy secret can easily contain an 8-char
+        // run like "...1234567890..." purely by chance (e.g.
+        // "sk_live_abcdef1234567890"), and matching those with `contains()`
+        // anywhere in the text caused genuine secrets to be misclassified as
+        // false positives. Whole-string sequential runs (e.g. "1234567890"
+        // or "abcdefghij" used *as* the entire candidate) are instead caught
+        // precisely by `is_sequential_pattern` below, which checks the full
+        // string rather than an arbitrary substring.
         let false_positive_patterns = [
-            "aaaaaaa", "bbbbbbb", "1234567", "abcdefg",
-            "qwertyu", "password", "12345678", "87654321",
-            "00000000", "11111111", "ffffffff", "deadbeef",
+            "aaaaaaa", "bbbbbbb",
+            "password", "00000000", "11111111", "ffffffff", "deadbeef",
             "cafebabe", "test1234", "admin123", "user1234",
         ];
-        
+
         for pattern in &false_positive_patterns {
             if text_lower.contains(pattern) {
                 return true;
             }
         }
-        
+
         // Check for repeated characters
         if text.len() >= 8 {
             let first_char = text.chars().next().unwrap();
@@ -865,12 +879,12 @@ impl FileScanner {
                 return true;
             }
         }
-        
+
         // Check for sequential patterns
         if self.is_sequential_pattern(text) {
             return true;
         }
-        
+
         false
     }
 
@@ -1022,22 +1036,43 @@ impl FileScanner {
         if text.len() < 4 {
             return false;
         }
-        
+
         let chars: Vec<char> = text.chars().collect();
-        
+
         // Check for ascending/descending sequences
         let mut ascending = true;
         let mut descending = true;
-        
+
         for i in 1..chars.len() {
-            if chars[i] as u32 != chars[i-1] as u32 + 1 {
+            let prev = chars[i - 1];
+            let cur = chars[i];
+
+            // Digit sequences wrap from 9 back to 0 (e.g. "1234567890" or,
+            // descending, "0987654321"). That's still the well-known
+            // "keyboard order" placeholder pattern even though the raw
+            // character codes don't increase/decrease monotonically at the
+            // wrap point, so treat the 9<->0 boundary as a continuation of
+            // the sequence rather than breaking it.
+            let is_ascending_step = if prev.is_ascii_digit() && cur.is_ascii_digit() {
+                cur as u32 == prev as u32 + 1 || (prev == '9' && cur == '0')
+            } else {
+                cur as u32 == prev as u32 + 1
+            };
+
+            let is_descending_step = if prev.is_ascii_digit() && cur.is_ascii_digit() {
+                prev as u32 == cur as u32 + 1 || (prev == '0' && cur == '9')
+            } else {
+                prev as u32 == cur as u32 + 1
+            };
+
+            if !is_ascending_step {
                 ascending = false;
             }
-            if chars[i] as u32 != chars[i-1] as u32 - 1 {
+            if !is_descending_step {
                 descending = false;
             }
         }
-        
+
         ascending || descending
     }
 }
@@ -1143,7 +1178,7 @@ mod tests {
         
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
-        
+
         // Should classify high-entropy strings
         let high_entropy_finding = findings.iter()
             .find(|f| f.secret.secret_type.contains("entropy") || f.secret.secret_type.contains("password"));
