@@ -748,12 +748,14 @@ impl TeamKeySharing {
     
     /// Commit team changes to git
     async fn commit_team_changes(&self, message: &str) -> GitResult<()> {
-        // Stage team files
-        self.repo.stage_file(&self.team_dir).await?;
-        
+        // Stage all team files. `self.team_dir` is a directory
+        // (`.cargocrypt/team`), so this must walk it rather than treat it as
+        // a single file to blob directly (see `stage_all_under`).
+        self.repo.stage_all_under(&self.team_dir).await?;
+
         // Create commit
         self.repo.commit(&format!("CargoCrypt: {}", message)).await?;
-        
+
         Ok(())
     }
     
