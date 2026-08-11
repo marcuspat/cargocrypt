@@ -5,13 +5,13 @@
 [![Crates.io](https://img.shields.io/crates/v/cargocrypt.svg)](https://crates.io/crates/cargocrypt)
 [![License](https://img.shields.io/crates/l/cargocrypt.svg)](LICENSE-MIT)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
-[![Tests](https://img.shields.io/badge/tests-118%2F135_passing-yellow.svg)](https://github.com/marcuspat/cargocrypt)
+[![Tests](https://img.shields.io/badge/tests-135%2F135_passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
 
 CargoCrypt brings zero-configuration cryptography to your Rust workflow: file encryption, git-integrated secret detection, and team key sharing.
 
 ## Version 0.2.0
 
-**118 of 135 tests passing as of 2026-08-10 — see [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) and the Testing section below for known issues.**
+**135 of 135 unit tests passing as of 2026-08-11 (147/147 across the full suite: unit + integration + doctests). Previously known failure clusters have been fixed; see the Testing section below for details.**
 
 ### What's New in v0.2.0
 
@@ -178,11 +178,12 @@ pre_commit_hooks = true         # Automatic secret scanning
 
 ## 🧪 Testing & Quality
 
-**Test status: 118/135 passing (2026-08-10).** The suite compiles and runs; 17 tests currently fail. Known failure clusters, for anyone picking this up:
-- Entropy-based secret detection (`detection::entropy`, `detection::scanner`, `detection::detector`, `detection::mod`) — several tests show the entropy/confidence path misclassifying known-fake secrets and plain English text. Pattern-based detection (regex matching on key headers like `-----BEGIN RSA PRIVATE KEY-----`) is verified working; the entropy-scoring path is not.
-- Git-backed team storage (`git::storage`, `git::team`) — config writes failing with a missing-directory error, and team-key tests hitting a git2 "cannot create blob: it is a directory" error, both suggesting a path-construction bug in that module.
-- `crypto::security::tests::test_secure_buffer` — a zeroization-behavior assertion mismatch.
-- `git::hooks::tests::test_secret_pattern_matching`, `validation::tests::test_path_validation` — isolated assertion failures, not yet root-caused.
+**Test status: 135/135 unit tests passing, 147/147 across the full suite (135 unit + 5 integration + 7 doctests), as of 2026-08-11.** All previously known failure clusters have been root-caused and fixed:
+- Entropy-based secret detection (`detection::entropy`, `detection::scanner`, `detection::detector`) - the natural-language check now tokenizes text and matches whole words against a dictionary instead of doing raw substring search; false-positive/sequential-pattern heuristics no longer reject genuine secrets that happen to contain short digit runs (e.g. `sk_test_FAKE1234567890ABCDEF`); and confidence scoring is now gated by the same entropy/charset thresholds used for classification, so strings that don't clear those thresholds can no longer score as high-confidence secrets.
+- Git-backed team storage (`git::storage`, `git::team`) - `EncryptedStorage::initialize` now creates the parent `.cargocrypt` directory before writing `storage.toml` (it did not exist yet on a fresh repo); team commits now stage the team directory with `index.add_all` (via a new `GitRepo::stage_all_under` helper) instead of passing a directory to `index.add_path`, which libgit2 rejects with "cannot create blob from '...': it is a directory".
+- `crypto::security::tests::test_secure_buffer` - `SecureBuffer::zeroize` now zeroizes the buffer's contents in place instead of calling `Vec::zeroize()`, which also truncates the buffer to empty; the intended security property is "overwritten with zeros," not "deallocated."
+- `git::hooks::tests::test_secret_pattern_matching` - the default secret-detection regexes now allow an optional leading quote before the character class, matching how the patterns are used against quoted config values.
+- `validation::tests::test_path_validation` - a missing parent directory is now reported as a warning rather than a hard validation error, since it is a legitimate, common state (e.g. a path whose directory will be created later).
 
 ```bash
 # Run full test suite
@@ -200,7 +201,7 @@ cargo run --example performance_test --release
 - ✅ Password security and edge cases
 - ✅ File operations with various types (binary, text, empty)
 - ✅ Concurrent operations and performance
-- ⚠️ Git integration and team features (partial failures, see above)
+- ✅ Git integration and team features
 - ✅ TUI interface functionality
 - ✅ Monitoring and alerting systems
 - ✅ Error handling and resilience patterns
