@@ -298,8 +298,8 @@ impl EntropyAnalyzer {
 
         // The normalized-entropy term above is relative to the string's own
         // (possibly tiny) charset, so a short string that merely avoids
-        // repeating any of its few distinct characters -- e.g. "hello_world",
-        // which uses 8 distinct characters close to uniformly -- can score a
+        // repeating any of its few distinct characters (e.g. "hello_world",
+        // which uses 8 distinct characters close to uniformly) can score a
         // near-maximal normalized entropy despite having low *absolute*
         // entropy and little real randomness. Without this gate that
         // artifact alone was enough to push confidence for plainly
@@ -370,7 +370,7 @@ impl EntropyAnalyzer {
 
         // Common non-secret patterns. Note: deliberately excludes short
         // "keyboard sequence" fillers like "12345678", "abcdefgh" or
-        // "qwertyui" as *substrings* -- a real high-entropy secret can easily
+        // "qwertyui" as *substrings*: a real high-entropy secret can easily
         // contain an 8-character run like "...1234567890..." by chance (e.g.
         // "sk_test_FAKE1234567890ABCDEF"), and matching them with
         // `contains()` anywhere in the text caused genuine secrets to be

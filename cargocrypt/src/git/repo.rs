@@ -142,7 +142,7 @@ impl GitRepo {
     /// Stage all files under a directory (recursively) for commit.
     ///
     /// `index.add_path` (used by `stage_file`) expects a path to a single
-    /// file -- libgit2 tries to create a blob directly from it, which fails
+    /// file: libgit2 tries to create a blob directly from it, which fails
     /// with a "cannot create blob from '...': it is a directory" error if
     /// given a directory. Use `add_all` with the directory as a pathspec
     /// instead, which lets libgit2 walk the directory and stage every file

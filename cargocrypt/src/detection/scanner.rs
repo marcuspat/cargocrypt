@@ -732,7 +732,7 @@ impl FileScanner {
 
     /// Detect secrets based on contextual clues
     ///
-    /// Returns `(keyword, matched_text, start, end, confidence)` -- the
+    /// Returns `(keyword, matched_text, start, end, confidence)`. The
     /// triggering keyword is included (rather than discarded) so callers can
     /// classify the resulting finding by what kind of secret it looks like
     /// (e.g. "password", "api_key") instead of a single generic label.

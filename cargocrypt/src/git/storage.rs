@@ -119,7 +119,7 @@ impl EncryptedStorage {
         let config_content = toml::to_string(&self.config)
             .map_err(|e| GitError::StorageFailed(format!("Failed to serialize config: {}", e)))?;
 
-        // Ensure the parent ".cargocrypt" directory exists before writing --
+        // Ensure the parent ".cargocrypt" directory exists before writing:
         // `fs::write` does not create it for us, and on a freshly initialized
         // repository nothing else has created it yet either.
         if let Some(parent) = storage_config_path.parent() {
