@@ -294,26 +294,66 @@ impl EntropyAnalyzer {
             confidence -= 0.4;
         }
 
+        confidence = confidence.max(0.0).min(1.0);
+
+        // The normalized-entropy term above is relative to the string's own
+        // (possibly tiny) charset, so a short string that merely avoids
+        // repeating any of its few distinct characters -- e.g. "hello_world",
+        // which uses 8 distinct characters close to uniformly -- can score a
+        // near-maximal normalized entropy despite having low *absolute*
+        // entropy and little real randomness. Without this gate that
+        // artifact alone was enough to push confidence for plainly
+        // non-secret strings above 0.8. Tie confidence back to the same
+        // basic entropy/charset gate used by `is_likely_secret_by_entropy`
+        // so a candidate that doesn't even clear that bar can't still be
+        // reported with moderate-to-high confidence.
+        if shannon_entropy < self.min_entropy_threshold
+            || normalized_entropy < self.min_normalized_entropy
+            || charset_size < self.min_charset_size
+        {
+            confidence *= 0.3;
+        }
+
         confidence.max(0.0).min(1.0)
     }
 
     /// Check if text looks like natural language
     fn looks_like_natural_language(&self, text: &str) -> bool {
         let lowercase_text = text.to_lowercase();
-        
-        // Check for common English words
+
+        // Common English words used as a lightweight "is this a real word"
+        // dictionary. Split the text into alphabetic tokens (on whitespace,
+        // underscores, digits, punctuation, etc.) and match whole tokens
+        // against this list, rather than doing a raw substring search.
+        // Substring search is both too loose (e.g. "cat" would match inside
+        // "AKIAIOSFODNN...cat-free gibberish") and too strict in effect,
+        // since it only takes one accidental hit combined with another to
+        // misfire; tokenizing avoids spurious mid-token matches entirely.
         let common_words = [
             "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "was", "one",
             "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now",
             "old", "see", "two", "way", "who", "boy", "did", "man", "car", "dog", "cat", "run",
+            "this", "that", "with", "from", "have", "will", "your", "what", "when", "where",
+            "quick", "brown", "fox", "jumps", "over", "lazy",
+            "configuration", "value", "value's", "config", "settings", "default", "example",
         ];
 
-        let word_count = common_words
+        let words: Vec<&str> = lowercase_text
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|word| word.len() >= 2)
+            .collect();
+
+        if words.is_empty() {
+            return false;
+        }
+
+        let word_count = words
             .iter()
-            .filter(|&&word| lowercase_text.contains(word))
+            .filter(|&&word| common_words.contains(&word))
             .count();
 
-        // If it contains multiple common words, it's likely natural language
+        // Two or more recognized dictionary words is a strong signal that
+        // this is a natural-language phrase or identifier, not a secret.
         word_count >= 2
     }
 
@@ -327,13 +367,22 @@ impl EntropyAnalyzer {
     /// Check for common non-secret patterns
     fn is_common_non_secret_pattern(&self, text: &str) -> bool {
         let lowercase_text = text.to_lowercase();
-        
-        // Common non-secret patterns
+
+        // Common non-secret patterns. Note: deliberately excludes short
+        // "keyboard sequence" fillers like "12345678", "abcdefgh" or
+        // "qwertyui" as *substrings* -- a real high-entropy secret can easily
+        // contain an 8-character run like "...1234567890..." by chance (e.g.
+        // "sk_test_FAKE1234567890ABCDEF"), and matching them with
+        // `contains()` anywhere in the text caused genuine secrets to be
+        // misclassified as placeholders. A standalone placeholder such as
+        // "12345678" is already rejected by the Shannon entropy threshold
+        // above (its entropy is too low relative to its tiny charset), and
+        // `is_single_character_type` catches purely-numeric or
+        // purely-alphabetic runs, so no substring heuristic is needed here.
         let non_secret_patterns = [
             "localhost", "127.0.0.1", "example.com", "test.com",
             "placeholder", "your_key_here", "insert_key_here",
             "todo", "fixme", "changeme", "password123",
-            "abcdefgh", "12345678", "qwertyui",
         ];
 
         non_secret_patterns
@@ -386,10 +435,21 @@ pub mod utils {
     pub fn highest_entropy_substring(text: &str, min_length: usize) -> Option<String> {
         let analyzer = EntropyAnalyzer::new();
         let candidates = analyzer.extract_high_entropy_substrings(text, min_length);
-        
+
+        // Rank by overall confidence rather than raw Shannon entropy. Raw
+        // per-character entropy is a very local measure: among the many
+        // overlapping windows this function considers (e.g. a 20-character
+        // secret produces windows of every length from `min_length` to 20
+        // starting at every offset), trimming a single repeated character
+        // off one end can nudge the raw entropy of a *smaller* window
+        // slightly above that of the full, "best" candidate even though it
+        // throws away real signal (length, charset diversity) about how
+        // secret-like the match is. Confidence already accounts for that,
+        // and is what `extract_high_entropy_substrings` itself uses to rank
+        // candidates, so use it here too for a stable, meaningful pick.
         candidates
             .into_iter()
-            .max_by(|a, b| a.1.shannon_entropy.partial_cmp(&b.1.shannon_entropy).unwrap())
+            .max_by(|a, b| a.1.confidence.partial_cmp(&b.1.confidence).unwrap())
             .map(|(substring, _)| substring)
     }
 

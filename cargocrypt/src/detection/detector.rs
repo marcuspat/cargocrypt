@@ -44,19 +44,25 @@ impl Default for DetectionConfig {
             enable_custom_rules: true,
             min_confidence: 0.3,
             analyze_entropy: true,
+            // NOTE: these are matched with an *unanchored* substring/regex
+            // search against the raw secret value (see
+            // `post_process_findings`), so they must be specific enough that
+            // they can't realistically appear inside a real secret. Generic
+            // single words like "test", "example", "fake", "dummy" or a bare
+            // "12345" used to be included here, but a real credential can
+            // easily contain one of those as a substring by chance or by
+            // convention (e.g. Stripe's own test-mode keys are literally
+            // named "sk_test_..." and are still sensitive), which caused
+            // genuine findings to be silently dropped instead of merely
+            // having their confidence reduced (which
+            // `adjust_confidence_with_context` / `SecretPattern::adjust_confidence`
+            // already do for exactly these words). Keep only patterns that
+            // are unambiguous, deliberate placeholder templates.
             ignore_patterns: vec![
-                // Common test patterns
-                "example".to_string(),
-                "test".to_string(),
-                "placeholder".to_string(),
                 "your_.*_here".to_string(),
                 "insert_.*_here".to_string(),
-                // Common dummy values
-                "12345".to_string(),
                 "password123".to_string(),
                 "changeme".to_string(),
-                "dummy".to_string(),
-                "fake".to_string(),
             ],
             whitelist_patterns: vec![
                 // Comments and documentation
