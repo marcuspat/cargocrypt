@@ -71,7 +71,16 @@ impl MonitoringManager {
         let env_filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new(&self.config.file_log_level));
 
-        tracing_subscriber::registry()
+        // Use `try_init` rather than `init`: a process can only ever install
+        // one global default tracing subscriber. `init()` panics on the
+        // second attempt with "a global default trace dispatcher has
+        // already been set", which is reachable any time more than one
+        // `CargoCrypt` instance gets constructed in the same process -- e.g.
+        // several tests in the same integration-test binary, each building
+        // its own instance. That's not a real error (logging is already
+        // active from the earlier call), so treat "already initialized" as
+        // a harmless no-op instead of propagating/panicking.
+        if let Err(e) = tracing_subscriber::registry()
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_target(false)
@@ -81,7 +90,10 @@ impl MonitoringManager {
                     .compact()
             )
             .with(env_filter)
-            .init();
+            .try_init()
+        {
+            debug!("Tracing subscriber already initialized, skipping: {}", e);
+        }
 
         info!("CargoCrypt monitoring initialized");
         Ok(())
