@@ -524,20 +524,20 @@ impl GitHook for SecretDetectionHook {
 
 set -e
 
-echo "\xf0\x9f\x94\x8d CargoCrypt: Scanning for secrets..."
+echo "🔍 CargoCrypt: Scanning for secrets..."
 
 # Check if cargocrypt is available
 if ! command -v cargocrypt &> /dev/null; then
-    echo "\xe2\x9d\x8c CargoCrypt not found in PATH"
+    echo "❌ CargoCrypt not found in PATH"
     exit 1
 fi
 
 # Run secret detection on staged files using CargoCrypt's built-in detection
 if cargocrypt git install-hooks --check-secrets 2>/dev/null; then
-    echo "\xe2\x9c\x85 No secrets detected in staged files"
+    echo "✅ No secrets detected in staged files"
     exit 0
 else
-    echo "\xe2\x9d\x8c Secrets detected! Commit blocked."
+    echo "❌ Secrets detected! Commit blocked."
     echo "To encrypt sensitive files: 'cargocrypt encrypt <file>'"
     echo "Or configure .gitattributes for automatic encryption"
     exit 1
@@ -574,17 +574,17 @@ impl GitHook for EncryptionValidationHook {
 
 set -e
 
-echo "\xf0\x9f\x94\x90 CargoCrypt: Validating encrypted files..."
+echo "🔐 CargoCrypt: Validating encrypted files..."
 
 # Check if cargocrypt is available
 if ! command -v cargocrypt &> /dev/null; then
-    echo "\xe2\x9d\x8c CargoCrypt not found in PATH"
+    echo "❌ CargoCrypt not found in PATH"
     exit 1
 fi
 
 # Validate encryption for files marked as encrypted
 # For now, just check if there are any .enc files that might need validation
-echo "\xe2\x9c\x85 Encryption validation passed"
+echo "✅ Encryption validation passed"
 # TODO: Implement proper validation once validate command is added
 exit 0
 "#;
