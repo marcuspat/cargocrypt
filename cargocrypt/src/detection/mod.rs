@@ -27,7 +27,7 @@
 //!     
 //!     for finding in findings {
 //!         if finding.confidence > 0.8 {
-//!             println!("High confidence secret found: {}", finding.secret_type);
+//!             println!("High confidence secret found: {}", finding.secret.secret_type);
 //!         }
 //!     }
 //!     

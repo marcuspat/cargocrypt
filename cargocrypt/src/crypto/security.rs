@@ -54,7 +54,18 @@ impl SecureBuffer {
 
 impl Zeroize for SecureBuffer {
     fn zeroize(&mut self) {
-        self.data.zeroize();
+        // Overwrite the buffer's bytes with zeros in place, preserving its
+        // length. `Vec<u8>`'s own `Zeroize` impl zeroizes elements and then
+        // calls `clear()`, which drops them and sets the length to 0 --
+        // appropriate when the Vec itself is being discarded, but wrong
+        // here: `SecureBuffer` is meant to securely wipe sensitive data
+        // while remaining a valid, inspectable buffer of the same size
+        // (e.g. so callers can confirm via `as_slice()`/`len()` that it was
+        // actually overwritten with zeros, not silently deallocated out
+        // from under them). Zeroize just the elements via `IterMut`'s
+        // `Zeroize` impl (the same volatile-write primitive `Vec`'s impl
+        // uses internally) without calling `clear()`.
+        self.data.iter_mut().zeroize();
     }
 }
 

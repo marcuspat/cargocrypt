@@ -15,10 +15,10 @@
 //!     let crypt = CargoCrypt::new().await?;
 //!     
 //!     // Encrypt a file
-//!     crypt.encrypt_file("src/secrets.rs").await?;
-//!     
+//!     crypt.encrypt_file("src/secrets.rs", "correct-horse-battery-staple").await?;
+//!
 //!     // Decrypt when needed
-//!     crypt.decrypt_file("src/secrets.rs.enc").await?;
+//!     crypt.decrypt_file("src/secrets.rs.enc", "correct-horse-battery-staple").await?;
 //!     
 //!     Ok(())
 //! }
@@ -80,7 +80,7 @@ pub async fn init() -> CryptoResult<()> {
 /// # #[tokio::main]
 /// # async fn main() -> anyhow::Result<()> {
 /// // Encrypt with default settings
-/// encrypt("sensitive.txt").await?;
+/// encrypt("sensitive.txt", "correct-horse-battery-staple").await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -96,7 +96,7 @@ pub async fn encrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> Cryp
 /// # #[tokio::main]
 /// # async fn main() -> anyhow::Result<()> {
 /// // Decrypt with default settings
-/// decrypt("sensitive.txt.enc").await?;
+/// decrypt("sensitive.txt.enc", "correct-horse-battery-staple").await?;
 /// # Ok(())
 /// # }
 /// ```
