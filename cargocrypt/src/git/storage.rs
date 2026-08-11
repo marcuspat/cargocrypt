@@ -118,7 +118,15 @@ impl EncryptedStorage {
         let storage_config_path = self.repo.workdir().join(".cargocrypt").join("storage.toml");
         let config_content = toml::to_string(&self.config)
             .map_err(|e| GitError::StorageFailed(format!("Failed to serialize config: {}", e)))?;
-        
+
+        // Ensure the parent ".cargocrypt" directory exists before writing --
+        // `fs::write` does not create it for us, and on a freshly initialized
+        // repository nothing else has created it yet either.
+        if let Some(parent) = storage_config_path.parent() {
+            fs::create_dir_all(parent).await
+                .map_err(|e| GitError::StorageFailed(format!("Failed to create storage config directory: {}", e)))?;
+        }
+
         fs::write(&storage_config_path, config_content).await
             .map_err(|e| GitError::StorageFailed(format!("Failed to write storage config: {}", e)))?;
         

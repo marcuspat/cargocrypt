@@ -101,13 +101,19 @@ impl Default for SecretDetectionConfig {
         Self {
             enabled: true,
             fail_on_detection: true,
+            // Note: the value side allows an optional leading quote (`"?`)
+            // before the character class. Config/env formats almost always
+            // quote string values (e.g. `api_key = "sk-..."` in TOML, or
+            // `API_KEY="..."` in .env files), and without it these patterns
+            // only ever matched bare, unquoted values -- missing the common
+            // case entirely.
             patterns: vec![
-                SecretPattern::new("api_key", r"(?i)api[_-]?key\s*[:=]\s*[a-zA-Z0-9]{16,}"),
+                SecretPattern::new("api_key", r#"(?i)api[_-]?key\s*[:=]\s*"?[a-zA-Z0-9]{16,}"#),
                 SecretPattern::new("aws_key", r"AKIA[0-9A-Z]{16}"),
                 SecretPattern::new("private_key", r"-----BEGIN (RSA |EC |)PRIVATE KEY-----"),
                 SecretPattern::new("password", r"(?i)password\s*[:=]\s*[^\s]{8,}"),
-                SecretPattern::new("token", r"(?i)token\s*[:=]\s*[a-zA-Z0-9]{20,}"),
-                SecretPattern::new("secret", r"(?i)secret\s*[:=]\s*[a-zA-Z0-9]{16,}"),
+                SecretPattern::new("token", r#"(?i)token\s*[:=]\s*"?[a-zA-Z0-9]{20,}"#),
+                SecretPattern::new("secret", r#"(?i)secret\s*[:=]\s*"?[a-zA-Z0-9]{16,}"#),
             ],
             exclude_files: vec![
                 "*.test.js".to_string(),
@@ -518,20 +524,20 @@ impl GitHook for SecretDetectionHook {
 
 set -e
 
-echo "🔍 CargoCrypt: Scanning for secrets..."
+echo "\xf0\x9f\x94\x8d CargoCrypt: Scanning for secrets..."
 
 # Check if cargocrypt is available
 if ! command -v cargocrypt &> /dev/null; then
-    echo "❌ CargoCrypt not found in PATH"
+    echo "\xe2\x9d\x8c CargoCrypt not found in PATH"
     exit 1
 fi
 
 # Run secret detection on staged files using CargoCrypt's built-in detection
 if cargocrypt git install-hooks --check-secrets 2>/dev/null; then
-    echo "✅ No secrets detected in staged files"
+    echo "\xe2\x9c\x85 No secrets detected in staged files"
     exit 0
 else
-    echo "❌ Secrets detected! Commit blocked."
+    echo "\xe2\x9d\x8c Secrets detected! Commit blocked."
     echo "To encrypt sensitive files: 'cargocrypt encrypt <file>'"
     echo "Or configure .gitattributes for automatic encryption"
     exit 1
@@ -568,17 +574,17 @@ impl GitHook for EncryptionValidationHook {
 
 set -e
 
-echo "🔐 CargoCrypt: Validating encrypted files..."
+echo "\xf0\x9f\x94\x90 CargoCrypt: Validating encrypted files..."
 
 # Check if cargocrypt is available
 if ! command -v cargocrypt &> /dev/null; then
-    echo "❌ CargoCrypt not found in PATH"
+    echo "\xe2\x9d\x8c CargoCrypt not found in PATH"
     exit 1
 fi
 
 # Validate encryption for files marked as encrypted
 # For now, just check if there are any .enc files that might need validation
-echo "✅ Encryption validation passed"
+echo "\xe2\x9c\x85 Encryption validation passed"
 # TODO: Implement proper validation once validate command is added
 exit 0
 "#;
@@ -638,8 +644,11 @@ mod tests {
     
     #[test]
     fn test_secret_pattern_matching() {
-        let pattern = SecretPattern::new("api_key", r"api_key\s*=\s*[a-zA-Z0-9_-]+");
-        
+        // The value side allows an optional leading quote so that realistic,
+        // quoted config syntax (as used in `test_content` below) matches,
+        // not just a bare unquoted value.
+        let pattern = SecretPattern::new("api_key", r#"api_key\s*=\s*"?[a-zA-Z0-9_-]+"#);
+
         let test_content = r#"
             config = {
                 api_key = "sk-1234567890abcdef"

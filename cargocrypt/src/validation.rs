@@ -145,14 +145,17 @@ impl InputValidator {
                 }
             }
             Err(_) => {
-                // Path doesn't exist - check if parent directory exists
+                // Path doesn't exist - check if parent directory exists.
+                // This is common and expected for a path that identifies
+                // where a *new* file will be written (e.g. an encryption
+                // output path), so it's a warning worth surfacing rather
+                // than a critical error that invalidates the whole path --
+                // unlike path traversal or illegal characters, a missing
+                // parent directory isn't a safety problem and doesn't mean
+                // the path itself is malformed.
                 if let Some(parent) = path.parent() {
-                    if !parent.exists() {
-                        result.add_error(
-                            "path",
-                            "Parent directory does not exist",
-                            ValidationSeverity::Critical
-                        );
+                    if !parent.as_os_str().is_empty() && !parent.exists() {
+                        result.add_warning("Parent directory does not exist");
                     }
                 }
             }
