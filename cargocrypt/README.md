@@ -9,6 +9,13 @@
 
 CargoCrypt brings zero-configuration cryptography to your Rust workflow: file encryption, git-integrated secret detection, and team key sharing.
 
+## Demo
+
+![cargocrypt encrypting and decrypting a .env file](cargocrypt-demo.gif)
+
+*Recorded from the actual binary with [asciinema](https://asciinema.org) + [agg](https://github.com/asciinema/agg).*
+
+
 ## Version 0.2.0
 
 **135 of 135 unit tests passing as of 2026-08-11 (147/147 across the full suite: unit + integration + doctests). Previously known failure clusters have been fixed; see the Testing section below for details.**
