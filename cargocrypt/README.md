@@ -1,36 +1,28 @@
 # CargoCrypt 🔐
 
-**Zero-config cryptographic operations for Rust projects with HIVE MIND collective intelligence**
+**Zero-config cryptographic operations for Rust projects**
 
 [![Crates.io](https://img.shields.io/crates/v/cargocrypt.svg)](https://crates.io/crates/cargocrypt)
 [![License](https://img.shields.io/crates/l/cargocrypt.svg)](LICENSE-MIT)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
-[![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
+[![Tests](https://img.shields.io/badge/tests-135%2F135_passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
 
-CargoCrypt brings enterprise-grade cryptography to your Rust workflow with zero configuration required. Enhanced with HIVE MIND collective intelligence for advanced automation, team collaboration, and adaptive security.
+CargoCrypt brings zero-configuration cryptography to your Rust workflow: file encryption, git-integrated secret detection, and team key sharing.
 
-## 🎉 Version 0.2.0 - Production Ready!
+## Version 0.2.0
 
-**Complete HIVE MIND implementation with 47/47 tests passing!**
+**135 of 135 unit tests passing as of 2026-08-11 (147/147 across the full suite: unit + integration + doctests). Previously known failure clusters have been fixed; see the Testing section below for details.**
 
 ### What's New in v0.2.0
 
 ✅ **Complete Feature Set:**
 - **Full-featured TUI interface** with file browser and directory traversal
-- **Advanced secret detection** with entropy analysis and ML pattern training  
+- **Secret detection** with entropy analysis and regex pattern matching
 - **Comprehensive Git integration** (hooks, filters, attributes, team collaboration)
 - **Real-time performance monitoring** with metrics dashboard and alerts
 - **Circuit breaker resilience patterns** with automatic error recovery
 - **Security hardening** with timing attack prevention and secure memory
 - **Team collaboration features** with secure key distribution
-- **HIVE MIND collective intelligence** with adaptive learning
-
-🚀 **HIVE MIND Features:**
-- **Adaptive topology switching** between hierarchical, mesh, ring patterns
-- **Neural pattern recognition** for security anomaly detection
-- **Collective decision making** with Byzantine fault tolerance
-- **Self-healing workflows** with automatic issue resolution
-- **Performance optimization** through machine learning
 
 ## Quick Start
 
@@ -71,7 +63,7 @@ cargocrypt monitor dashboard
 - **Git integration** with hooks, filters, and automatic secret detection
 - **Team collaboration** with secure key sharing through git
 - **Real-time monitoring** with metrics collection and alerting
-- **ML-based secret detection** for 50+ secret types with <1% false positives
+- **Secret detection** for 50+ secret types via regex + entropy scoring (false-positive rate not independently benchmarked)
 - **Performance optimization** with circuit breakers and retry logic
 
 ### Command Reference
@@ -163,36 +155,10 @@ real_time_metrics = true        # Enable performance monitoring
 alert_thresholds = "balanced"   # Alert sensitivity
 
 [git_integration]
-auto_detect_secrets = true      # ML-based secret detection
+auto_detect_secrets = true      # Regex + entropy-based secret detection
 team_key_sharing = true         # Secure collaborative key distribution
 pre_commit_hooks = true         # Automatic secret scanning
 ```
-
-## 🐝 HIVE MIND Architecture
-
-CargoCrypt implements **collective intelligence** for enhanced security and automation:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    HIVE MIND COLLECTIVE INTELLIGENCE                 │
-├─────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ Hierarchical│  │    Mesh     │  │    Ring     │  │ Adaptive    │  │
-│  │ Coordinator │  │ Coordinator │  │ Coordinator │  │ Coordinator │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-         │                    │                    │
-    ┌─────────┐         ┌─────────┐         ┌─────────┐
-    │ Neural  │         │ Pattern │         │ Decision│
-    │Learning │         │Recognition│       │ Making  │
-    └─────────┘         └─────────┘         └─────────┘
-```
-
-**Key Benefits:**
-- **Adaptive security** based on threat patterns
-- **Collective learning** from team usage
-- **Self-healing systems** with automatic recovery
-- **Performance optimization** through ML insights
 
 ## 🔒 Security
 
@@ -204,15 +170,20 @@ CargoCrypt implements **collective intelligence** for enhanced security and auto
 - **Secure memory** - Automatic zeroization of sensitive data
 
 **Operational Security:**
-- **ML-based secret detection** - 50+ secret types with continuous learning
+- **Secret detection** - 50+ secret types via regex + entropy scoring
 - **Git integration** - Prevent accidental secret commits
-- **Team security** - Distributed trust with Byzantine fault tolerance
+- **Team security** - Secure key distribution through git
 - **Audit trails** - Comprehensive operation logging
 - **Real-time alerts** - Security event monitoring
 
 ## 🧪 Testing & Quality
 
-**Comprehensive Test Coverage (47/47 tests passing):**
+**Test status: 135/135 unit tests passing, 147/147 across the full suite (135 unit + 5 integration + 7 doctests), as of 2026-08-11.** All previously known failure clusters have been root-caused and fixed:
+- Entropy-based secret detection (`detection::entropy`, `detection::scanner`, `detection::detector`) - the natural-language check now tokenizes text and matches whole words against a dictionary instead of doing raw substring search; false-positive/sequential-pattern heuristics no longer reject genuine secrets that happen to contain short digit runs (e.g. `sk_test_FAKE1234567890ABCDEF`); and confidence scoring is now gated by the same entropy/charset thresholds used for classification, so strings that don't clear those thresholds can no longer score as high-confidence secrets.
+- Git-backed team storage (`git::storage`, `git::team`) - `EncryptedStorage::initialize` now creates the parent `.cargocrypt` directory before writing `storage.toml` (it did not exist yet on a fresh repo); team commits now stage the team directory with `index.add_all` (via a new `GitRepo::stage_all_under` helper) instead of passing a directory to `index.add_path`, which libgit2 rejects with "cannot create blob from '...': it is a directory".
+- `crypto::security::tests::test_secure_buffer` - `SecureBuffer::zeroize` now zeroizes the buffer's contents in place instead of calling `Vec::zeroize()`, which also truncates the buffer to empty; the intended security property is "overwritten with zeros," not "deallocated."
+- `git::hooks::tests::test_secret_pattern_matching` - the default secret-detection regexes now allow an optional leading quote before the character class, matching how the patterns are used against quoted config values.
+- `validation::tests::test_path_validation` - a missing parent directory is now reported as a warning rather than a hard validation error, since it is a legitimate, common state (e.g. a path whose directory will be created later).
 
 ```bash
 # Run full test suite
@@ -277,7 +248,7 @@ CargoCrypt vs. traditional server-based solutions:
 
 ## 🤝 Contributing
 
-We welcome contributions! CargoCrypt is now in stable production release.
+We welcome contributions! See the Testing section above and [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) for current known issues before relying on this in production.
 
 **Contribution Areas:**
 - Additional secret detection patterns
@@ -310,7 +281,6 @@ at your option.
 
 ## 🙏 Acknowledgments
 
-- **HIVE MIND Architecture** - Inspired by collective intelligence research
 - **Rust Cryptography Community** - Ring, ChaCha20-Poly1305, Argon2 teams  
 - **Ratatui Community** - Beautiful terminal user interfaces
 - **Git Community** - Integration patterns and collaborative workflows
@@ -318,6 +288,7 @@ at your option.
 
 ---
 
-**🐝 Collective Intelligence. 🔒 Maximum Security. 🦀 Pure Rust.**
+**🔒 Zero-Config Security. 🦀 Pure Rust.**
 
-**Ready for production. Built for teams. Optimized for Rust.**
+**Under active development — see Testing section for current status. Built for teams. Optimized for Rust.**
+
