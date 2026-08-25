@@ -241,18 +241,6 @@ cargo audit
 cargo run --example performance_test --release
 ```
 
-## 📈 Performance Comparisons
-
-CargoCrypt vs. traditional server-based solutions:
-
-| Operation | CargoCrypt | Server-Based | Improvement |
-|-----------|------------|--------------|-------------|
-| Setup Time | <60 seconds | 2-8 hours | **480x faster** |
-| Encryption | 1.0+ GB/s | ~20 MB/s | **50x faster** |
-| Secret Scan | <1 second | N/A | **Instant** |
-| Team Setup | 2 minutes | Days | **720x faster** |
-| Memory Usage | 4MB-1GB | 512MB+ | **Configurable** |
-
 ## 🤝 Contributing
 
 We welcome contributions! See the Testing section above and [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) for current known issues before relying on this in production.
