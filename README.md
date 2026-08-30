@@ -4,8 +4,6 @@
 
 [![Crates.io](https://img.shields.io/crates/v/cargocrypt.svg)](https://crates.io/crates/cargocrypt)
 [![License](https://img.shields.io/crates/l/cargocrypt.svg)](LICENSE-MIT)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
-[![Tests](https://img.shields.io/badge/tests-135%2F135_passing-brightgreen.svg)](https://github.com/marcuspat/cargocrypt)
 
 CargoCrypt brings zero-configuration cryptography to your Rust workflow: file encryption, git-integrated secret detection, and team key sharing.
 
@@ -118,7 +116,7 @@ cargocrypt tui
 - **Throughput**: 1.0-1.2 GB/s (ChaCha20-Poly1305)
 - **Key Derivation**: 110ms-6.8s (configurable security profiles)
 - **Memory Usage**: 4MB-1GB (adaptive based on security level)
-- **Setup Time**: <60 seconds (480x faster than server-based solutions)
+- **Setup Time**: <60 seconds
 
 **Security Profiles:**
 
@@ -233,18 +231,6 @@ cargo audit
 # Benchmark performance
 cargo run --example performance_test --release
 ```
-
-## 📈 Performance Comparisons
-
-CargoCrypt vs. traditional server-based solutions:
-
-| Operation | CargoCrypt | Server-Based | Improvement |
-|-----------|------------|--------------|-------------|
-| Setup Time | <60 seconds | 2-8 hours | **480x faster** |
-| Encryption | 1.0+ GB/s | ~20 MB/s | **50x faster** |
-| Secret Scan | <1 second | N/A | **Instant** |
-| Team Setup | 2 minutes | Days | **720x faster** |
-| Memory Usage | 4MB-1GB | 512MB+ | **Configurable** |
 
 ## 🤝 Contributing
 
