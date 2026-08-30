@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cargocrypt
+      - run: cargo build --release
+      - run: cargo test
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
