@@ -1,22 +1,25 @@
 //! Main cryptographic engine implementation with resilience integration
 
 use crate::crypto::{
-    CryptoError, CryptoResult, DerivedKey, EncryptedSecret, PlaintextSecret, 
-    SecretMetadata, SecretType, defaults, keys::SecureRandom
+    defaults, keys::SecureRandom, CryptoError, CryptoResult, DerivedKey, EncryptedSecret,
+    PlaintextSecret, SecretMetadata, SecretType,
 };
 use crate::resilience::{CircuitBreaker, RetryPolicy};
 use crate::validation::InputValidator;
-use std::time::Duration;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::{Aead, KeyInit}};
 use argon2::Argon2;
-use std::time::{SystemTime, UNIX_EPOCH};
-use zeroize::Zeroize;
+use chacha20poly1305::{
+    aead::{Aead, KeyInit},
+    ChaCha20Poly1305, Key, Nonce,
+};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
+use zeroize::Zeroize;
 
 /// Main cryptographic engine for CargoCrypt with resilience features
-/// 
+///
 /// This engine provides high-level cryptographic operations using ChaCha20-Poly1305
 /// for authenticated encryption and Argon2 for key derivation. Includes circuit breaker
 /// protection, retry logic, and input validation for robust operation.
@@ -68,32 +71,36 @@ impl PerformanceProfile {
     pub fn argon2_params(&self) -> argon2::Params {
         match self {
             Self::Fast => argon2::Params::new(
-                4096,  // 4 MB memory
-                1,     // 1 iteration
-                1,     // 1 thread
+                4096, // 4 MB memory
+                1,    // 1 iteration
+                1,    // 1 thread
                 Some(32),
-            ).expect("Valid Argon2 params"),
-            
+            )
+            .expect("Valid Argon2 params"),
+
             Self::Balanced => argon2::Params::new(
                 65536, // 64 MB memory
-                3,     // 3 iterations  
+                3,     // 3 iterations
                 4,     // 4 threads
                 Some(32),
-            ).expect("Valid Argon2 params"),
-            
+            )
+            .expect("Valid Argon2 params"),
+
             Self::Secure => argon2::Params::new(
                 262144, // 256 MB memory
                 5,      // 5 iterations
                 8,      // 8 threads
                 Some(32),
-            ).expect("Valid Argon2 params"),
-            
+            )
+            .expect("Valid Argon2 params"),
+
             Self::Paranoid => argon2::Params::new(
                 1048576, // 1 GB memory
                 10,      // 10 iterations
                 16,      // 16 threads
                 Some(32),
-            ).expect("Valid Argon2 params"),
+            )
+            .expect("Valid Argon2 params"),
         }
     }
 }
@@ -176,13 +183,16 @@ impl CryptoEngine {
             performance_profile: PerformanceProfile::default(),
             circuit_breaker: Arc::new(CircuitBreaker::new(
                 "crypto_engine".to_string(),
-                5, // 5 failures before opening
-                Duration::from_secs(60) // 60 second timeout
+                5,                       // 5 failures before opening
+                Duration::from_secs(60), // 60 second timeout
             )),
-            retry_policy: Arc::new(RetryPolicy::new(
-                3, // max 3 retries
-                Duration::from_millis(100) // 100ms base delay
-            ).with_max_delay(Duration::from_secs(5))),
+            retry_policy: Arc::new(
+                RetryPolicy::new(
+                    3,                          // max 3 retries
+                    Duration::from_millis(100), // 100ms base delay
+                )
+                .with_max_delay(Duration::from_secs(5)),
+            ),
             validator: InputValidator::new(),
             features_enabled: Arc::new(RwLock::new(CryptoFeatures {
                 encryption: true,
@@ -200,24 +210,25 @@ impl CryptoEngine {
         engine.performance_profile = profile;
         engine
     }
-    
+
     /// Create a crypto engine with custom resilience configuration
     pub fn with_resilience_config(
         profile: PerformanceProfile,
         failure_threshold: u32,
         circuit_timeout: Duration,
         max_retries: u32,
-        retry_delay: Duration
+        retry_delay: Duration,
     ) -> Self {
         Self {
             performance_profile: profile,
             circuit_breaker: Arc::new(CircuitBreaker::new(
                 "crypto_engine".to_string(),
                 failure_threshold,
-                circuit_timeout
+                circuit_timeout,
             )),
-            retry_policy: Arc::new(RetryPolicy::new(max_retries, retry_delay)
-                .with_max_delay(Duration::from_secs(30))),
+            retry_policy: Arc::new(
+                RetryPolicy::new(max_retries, retry_delay).with_max_delay(Duration::from_secs(30)),
+            ),
             validator: InputValidator::new(),
             features_enabled: Arc::new(RwLock::new(CryptoFeatures {
                 encryption: true,
@@ -233,14 +244,19 @@ impl CryptoEngine {
     pub fn performance_profile(&self) -> PerformanceProfile {
         self.performance_profile
     }
-    
+
     /// Encrypt data with a password (convenience method)
     pub async fn encrypt_data(&self, data: &[u8], password: &str) -> CryptoResult<EncryptedSecret> {
-        self.encrypt_bytes(data, password, EncryptionOptions::default()).await
+        self.encrypt_bytes(data, password, EncryptionOptions::default())
+            .await
     }
-    
-    /// Decrypt data with a password (convenience method) 
-    pub fn decrypt_data(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<Vec<u8>> {
+
+    /// Decrypt data with a password (convenience method)
+    pub fn decrypt_data(
+        &self,
+        encrypted: &EncryptedSecret,
+        password: &str,
+    ) -> CryptoResult<Vec<u8>> {
         self.decrypt_to_bytes(encrypted, password)
     }
 
@@ -248,19 +264,23 @@ impl CryptoEngine {
     pub fn set_performance_profile(&mut self, profile: PerformanceProfile) {
         self.performance_profile = profile;
     }
-    
+
     /// Generate a new encryption key
     pub fn generate_key(&self) -> CryptoResult<DerivedKey> {
         let salt = SecureRandom::generate_salt()?;
         let password = SecureRandom::generate_password(32)?;
         self.derive_key(&password, &salt)
     }
-    
+
     /// Derive a key from password and salt
     pub fn derive_key(&self, password: &str, salt: &[u8]) -> CryptoResult<DerivedKey> {
         if salt.len() != defaults::SALT_LENGTH {
-            return Err(CryptoError::InvalidSalt { 
-                reason: format!("Salt must be {} bytes, got {}", defaults::SALT_LENGTH, salt.len())
+            return Err(CryptoError::InvalidSalt {
+                reason: format!(
+                    "Salt must be {} bytes, got {}",
+                    defaults::SALT_LENGTH,
+                    salt.len()
+                ),
             });
         }
         let mut salt_array = [0u8; defaults::SALT_LENGTH];
@@ -279,18 +299,21 @@ impl CryptoEngine {
         let features = self.features_enabled.read().await;
         if !features.encryption {
             return Err(CryptoError::Generic {
-                message: "Encryption feature is currently disabled due to system degradation".to_string(),
+                message: "Encryption feature is currently disabled due to system degradation"
+                    .to_string(),
             });
         }
         drop(features);
-        
+
         // Validate inputs
         let password_validation = self.validator.validate_password(password);
         if !password_validation.is_valid {
             return Err(CryptoError::Generic {
                 message: format!(
-                    "Password validation failed: {}", 
-                    password_validation.errors.iter()
+                    "Password validation failed: {}",
+                    password_validation
+                        .errors
+                        .iter()
                         .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
                         .map(|e| e.message.as_str())
                         .collect::<Vec<_>>()
@@ -298,9 +321,10 @@ impl CryptoEngine {
                 ),
             });
         }
-        
+
         let secret = PlaintextSecret::from_string(plaintext.to_string());
-        self.encrypt_with_resilience(secret, password, options).await
+        self.encrypt_with_resilience(secret, password, options)
+            .await
     }
 
     /// Encrypt bytes with a password
@@ -321,9 +345,10 @@ impl CryptoEngine {
         password: &str,
         options: EncryptionOptions,
     ) -> CryptoResult<EncryptedSecret> {
-        self.encrypt_with_resilience(plaintext, password, options).await
+        self.encrypt_with_resilience(plaintext, password, options)
+            .await
     }
-    
+
     /// Internal encrypt method with circuit breaker and retry logic
     async fn encrypt_with_resilience(
         &self,
@@ -336,51 +361,52 @@ impl CryptoEngine {
         let retry_policy = Arc::clone(&self.retry_policy);
         let performance_profile = self.performance_profile;
         let validator = self.validator.clone();
-        
+
         // Circuit breaker execution
-        let result = circuit_breaker.execute(|| {
-            // Determine the performance profile to use
-            let profile = options.performance_profile.unwrap_or(performance_profile);
-            
-            // Create or use provided salt
-            let salt = match options.salt {
-                Some(salt) => salt,
-                None => SecureRandom::generate_salt()?,
-            };
+        let result = circuit_breaker
+            .execute(|| {
+                // Determine the performance profile to use
+                let profile = options.performance_profile.unwrap_or(performance_profile);
 
-            // Validate salt length
-            if salt.len() != defaults::SALT_LENGTH {
-                return Err(CryptoError::InvalidSalt {
-                    reason: format!("Salt must be {} bytes", defaults::SALT_LENGTH),
+                // Create or use provided salt
+                let salt = match options.salt {
+                    Some(salt) => salt,
+                    None => SecureRandom::generate_salt()?,
+                };
+
+                // Validate salt length
+                if salt.len() != defaults::SALT_LENGTH {
+                    return Err(CryptoError::InvalidSalt {
+                        reason: format!("Salt must be {} bytes", defaults::SALT_LENGTH),
+                    });
+                }
+
+                // Derive key using the specified performance profile with validation
+                let key_result = self.derive_key_with_profile(password, &salt, profile);
+                let key = key_result?;
+
+                // Set up metadata
+                let metadata = options.metadata.or_else(|| {
+                    let mut meta = SecretMetadata::new();
+                    meta.created_at = Some(
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    );
+                    Some(meta)
                 });
-            }
 
-            // Derive key using the specified performance profile with validation
-            let key_result = self.derive_key_with_profile(password, &salt, profile);
-            let key = key_result?;
-            
-            // Set up metadata
-            let metadata = options.metadata.or_else(|| {
-                let mut meta = SecretMetadata::new();
-                meta.created_at = Some(
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                );
-                Some(meta)
-            });
+                EncryptedSecret::encrypt_with_key(plaintext.clone(), &key, metadata)
+            })
+            .await;
 
-            EncryptedSecret::encrypt_with_key(plaintext.clone(), &key, metadata)
-        }).await;
-        
         match result {
             Ok(encrypted) => Ok(encrypted),
-            Err(crate::resilience::CircuitBreakerError::CircuitOpen) => {
-                Err(CryptoError::Generic {
-                    message: "Crypto operations circuit breaker is open - too many recent failures".to_string(),
-                })
-            }
+            Err(crate::resilience::CircuitBreakerError::CircuitOpen) => Err(CryptoError::Generic {
+                message: "Crypto operations circuit breaker is open - too many recent failures"
+                    .to_string(),
+            }),
             Err(crate::resilience::CircuitBreakerError::CircuitOpened) => {
                 Err(CryptoError::Generic {
                     message: "Crypto operations circuit breaker opened due to failures".to_string(),
@@ -394,18 +420,30 @@ impl CryptoEngine {
     }
 
     /// Decrypt an encrypted secret with a password
-    pub fn decrypt(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<PlaintextSecret> {
+    pub fn decrypt(
+        &self,
+        encrypted: &EncryptedSecret,
+        password: &str,
+    ) -> CryptoResult<PlaintextSecret> {
         encrypted.decrypt_with_password(password)
     }
 
     /// Decrypt to string (convenience method)
-    pub fn decrypt_to_string(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<String> {
+    pub fn decrypt_to_string(
+        &self,
+        encrypted: &EncryptedSecret,
+        password: &str,
+    ) -> CryptoResult<String> {
         let plaintext = self.decrypt(encrypted, password)?;
         plaintext.into_string()
     }
 
     /// Decrypt to bytes (convenience method)
-    pub fn decrypt_to_bytes(&self, encrypted: &EncryptedSecret, password: &str) -> CryptoResult<Vec<u8>> {
+    pub fn decrypt_to_bytes(
+        &self,
+        encrypted: &EncryptedSecret,
+        password: &str,
+    ) -> CryptoResult<Vec<u8>> {
         let plaintext = self.decrypt(encrypted, password)?;
         Ok(plaintext.as_bytes().to_vec())
     }
@@ -441,13 +479,19 @@ impl CryptoEngine {
 
         for (name, secret_data) in secrets {
             let options = base_options.clone();
-            match self.encrypt_string(secret_data.as_ref(), password, options).await {
+            match self
+                .encrypt_string(secret_data.as_ref(), password, options)
+                .await
+            {
                 Ok(encrypted) => successes.push((name, encrypted)),
                 Err(error) => failures.push((name, error)),
             }
         }
 
-        BatchEncryptionResult { successes, failures }
+        BatchEncryptionResult {
+            successes,
+            failures,
+        }
     }
 
     /// Direct encryption with ChaCha20-Poly1305 (low-level API)
@@ -459,7 +503,7 @@ impl CryptoEngine {
     ) -> CryptoResult<Vec<u8>> {
         let cipher = ChaCha20Poly1305::new(key);
         let nonce_obj = Nonce::from_slice(nonce);
-        
+
         cipher
             .encrypt(nonce_obj, plaintext)
             .map_err(CryptoError::from)
@@ -474,7 +518,7 @@ impl CryptoEngine {
     ) -> CryptoResult<Vec<u8>> {
         let cipher = ChaCha20Poly1305::new(key);
         let nonce_obj = Nonce::from_slice(nonce);
-        
+
         cipher
             .decrypt(nonce_obj, ciphertext)
             .map_err(|_| CryptoError::AuthenticationFailed)
@@ -488,20 +532,16 @@ impl CryptoEngine {
         profile: PerformanceProfile,
     ) -> CryptoResult<DerivedKey> {
         let params = profile.argon2_params();
-        let argon2 = Argon2::new(
-            defaults::ARGON2_ALGORITHM,
-            defaults::ARGON2_VERSION,
-            params,
-        );
+        let argon2 = Argon2::new(defaults::ARGON2_ALGORITHM, defaults::ARGON2_VERSION, params);
 
         let mut key_bytes = [0u8; defaults::KEY_LENGTH];
-        
+
         argon2
             .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
             .map_err(CryptoError::from)?;
 
         let _key = Key::from_slice(&key_bytes).clone();
-        
+
         // Zeroize intermediate data
         key_bytes.zeroize();
 
@@ -537,28 +577,28 @@ impl CryptoEngine {
     pub fn benchmark_performance(&self) -> CryptoResult<PerformanceBenchmark> {
         let test_password = "benchmark_password_12345";
         let test_data = "This is test data for benchmarking purposes. It contains enough text to provide meaningful encryption benchmarks.";
-        
+
         let start_time = std::time::Instant::now();
-        
+
         // Test key derivation
         let derive_start = std::time::Instant::now();
         let salt = Self::generate_salt()?;
         let key = self.derive_key_with_profile(test_password, &salt, self.performance_profile)?;
         let derive_duration = derive_start.elapsed();
-        
+
         // Test encryption
         let encrypt_start = std::time::Instant::now();
         let plaintext = PlaintextSecret::from_string(test_data.to_string());
         let encrypted = EncryptedSecret::encrypt_with_key(plaintext, &key, None)?;
         let encrypt_duration = encrypt_start.elapsed();
-        
+
         // Test decryption
         let decrypt_start = std::time::Instant::now();
         let _decrypted = encrypted.decrypt_with_key(&key)?;
         let decrypt_duration = decrypt_start.elapsed();
-        
+
         let total_duration = start_time.elapsed();
-        
+
         Ok(PerformanceBenchmark {
             profile: self.performance_profile,
             key_derivation_ms: derive_duration.as_millis() as f64,
@@ -580,11 +620,12 @@ impl CryptoEngine {
         let features = self.features_enabled.read().await;
         if !features.encryption {
             return Err(CryptoError::Generic {
-                message: "File encryption is currently disabled due to system degradation".to_string(),
+                message: "File encryption is currently disabled due to system degradation"
+                    .to_string(),
             });
         }
         drop(features);
-        
+
         // Validate password
         let password_validation = self.validator.validate_password(password);
         if password_validation.has_critical_errors() {
@@ -592,42 +633,44 @@ impl CryptoEngine {
                 message: "Password validation failed for file encryption".to_string(),
             });
         }
-        
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| CryptoError::Generic { message: format!("Failed to read file: {}", e) })?;
-        
+
+        let content = std::fs::read_to_string(file_path).map_err(|e| CryptoError::Generic {
+            message: format!("Failed to read file: {}", e),
+        })?;
+
         let plaintext = PlaintextSecret::from_string(content);
-        
+
         // Execute with circuit breaker
         let circuit_breaker = Arc::clone(&self.circuit_breaker);
-        let result = circuit_breaker.execute(|| {
-            let derived_key = if let Some(salt) = salt {
-                self.derive_key_with_profile(password, salt, self.performance_profile)?
-            } else {
-                let salt = Self::generate_salt()?;
-                self.derive_key(password, &salt)?
-            };
-            
-            EncryptedSecret::encrypt_with_key(plaintext.clone(), &derived_key, None)
-        }).await;
-        
+        let result = circuit_breaker
+            .execute(|| {
+                let derived_key = if let Some(salt) = salt {
+                    self.derive_key_with_profile(password, salt, self.performance_profile)?
+                } else {
+                    let salt = Self::generate_salt()?;
+                    self.derive_key(password, &salt)?
+                };
+
+                EncryptedSecret::encrypt_with_key(plaintext.clone(), &derived_key, None)
+            })
+            .await;
+
         match result {
             Ok(encrypted) => Ok(encrypted),
-            Err(error) => {
-                match error {
-                    crate::resilience::CircuitBreakerError::CircuitOpen => {
-                        Err(CryptoError::Generic {
-                            message: "File encryption circuit breaker is open".to_string(),
-                        })
-                    }
-                    crate::resilience::CircuitBreakerError::CircuitOpened => {
-                        Err(CryptoError::Generic {
-                            message: "File encryption circuit breaker opened due to failures".to_string(),
-                        })
-                    }
-                    crate::resilience::CircuitBreakerError::OperationFailed(crypto_error) => Err(crypto_error),
+            Err(error) => match error {
+                crate::resilience::CircuitBreakerError::CircuitOpen => Err(CryptoError::Generic {
+                    message: "File encryption circuit breaker is open".to_string(),
+                }),
+                crate::resilience::CircuitBreakerError::CircuitOpened => {
+                    Err(CryptoError::Generic {
+                        message: "File encryption circuit breaker opened due to failures"
+                            .to_string(),
+                    })
                 }
-            }
+                crate::resilience::CircuitBreakerError::OperationFailed(crypto_error) => {
+                    Err(crypto_error)
+                }
+            },
         }
     }
 
@@ -640,50 +683,57 @@ impl CryptoEngine {
         let plaintext = self.decrypt(encrypted, password)?;
         plaintext.into_string()
     }
-    
+
     /// Enable graceful degradation by disabling specific features
     pub async fn disable_feature(&self, feature: &str) -> CryptoResult<()> {
         let mut features = self.features_enabled.write().await;
-        
+
         match feature {
             "encryption" => features.encryption = false,
             "decryption" => features.decryption = false,
             "key_derivation" => features.key_derivation = false,
             "batch_operations" => features.batch_operations = false,
             "direct_operations" => features.direct_operations = false,
-            _ => return Err(CryptoError::Generic {
-                message: format!("Unknown feature: {}", feature),
-            }),
+            _ => {
+                return Err(CryptoError::Generic {
+                    message: format!("Unknown feature: {}", feature),
+                })
+            }
         }
-        
-        tracing::warn!("Crypto engine feature '{}' has been disabled for graceful degradation", feature);
+
+        tracing::warn!(
+            "Crypto engine feature '{}' has been disabled for graceful degradation",
+            feature
+        );
         Ok(())
     }
-    
+
     /// Re-enable a previously disabled feature
     pub async fn enable_feature(&self, feature: &str) -> CryptoResult<()> {
         let mut features = self.features_enabled.write().await;
-        
+
         match feature {
             "encryption" => features.encryption = true,
             "decryption" => features.decryption = true,
             "key_derivation" => features.key_derivation = true,
             "batch_operations" => features.batch_operations = true,
             "direct_operations" => features.direct_operations = true,
-            _ => return Err(CryptoError::Generic {
-                message: format!("Unknown feature: {}", feature),
-            }),
+            _ => {
+                return Err(CryptoError::Generic {
+                    message: format!("Unknown feature: {}", feature),
+                })
+            }
         }
-        
+
         tracing::info!("Crypto engine feature '{}' has been enabled", feature);
         Ok(())
     }
-    
+
     /// Get current feature status
     pub async fn get_feature_status(&self) -> CryptoFeatures {
         self.features_enabled.read().await.clone()
     }
-    
+
     /// Reset circuit breaker manually
     pub async fn reset_circuit_breaker(&self) {
         self.circuit_breaker.reset().await;
@@ -745,10 +795,13 @@ mod tests {
         let engine = CryptoEngine::new();
         let plaintext = "Hello, World!";
         let password = "test_password";
-        
-        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
+
+        let encrypted = engine
+            .encrypt_string(plaintext, password, EncryptionOptions::new())
+            .await
+            .unwrap();
         let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
-        
+
         assert_eq!(plaintext, decrypted);
     }
 
@@ -765,10 +818,13 @@ mod tests {
             let engine = CryptoEngine::with_performance_profile(profile);
             let plaintext = "Test data";
             let password = "test_password";
-            
-            let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
+
+            let encrypted = engine
+                .encrypt_string(plaintext, password, EncryptionOptions::new())
+                .await
+                .unwrap();
             let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
-            
+
             assert_eq!(plaintext, decrypted);
         }
     }
@@ -781,13 +837,15 @@ mod tests {
             ("db_password".to_string(), "super_secret_db_pass"),
             ("jwt_secret".to_string(), "jwt-signing-key-12345"),
         ];
-        
+
         let password = "master_password";
-        let result = engine.encrypt_batch(secrets, password, EncryptionOptions::new()).await;
-        
+        let result = engine
+            .encrypt_batch(secrets, password, EncryptionOptions::new())
+            .await;
+
         assert_eq!(result.successes.len(), 3);
         assert_eq!(result.failures.len(), 0);
-        
+
         // Verify all can be decrypted
         for (name, encrypted) in result.successes {
             let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
@@ -802,16 +860,23 @@ mod tests {
         let plaintext = "Secret data";
         let old_password = "old_password";
         let new_password = "new_password";
-        
-        let encrypted = engine.encrypt_string(plaintext, old_password, EncryptionOptions::new()).await.unwrap();
-        let reencrypted = engine.change_password(&encrypted, old_password, new_password).unwrap();
-        
+
+        let encrypted = engine
+            .encrypt_string(plaintext, old_password, EncryptionOptions::new())
+            .await
+            .unwrap();
+        let reencrypted = engine
+            .change_password(&encrypted, old_password, new_password)
+            .unwrap();
+
         // Old password should not work
         assert!(!engine.verify_password(&reencrypted, old_password));
-        
+
         // New password should work
         assert!(engine.verify_password(&reencrypted, new_password));
-        let decrypted = engine.decrypt_to_string(&reencrypted, new_password).unwrap();
+        let decrypted = engine
+            .decrypt_to_string(&reencrypted, new_password)
+            .unwrap();
         assert_eq!(plaintext, decrypted);
     }
 
@@ -819,13 +884,13 @@ mod tests {
     fn test_direct_encryption() {
         let engine = CryptoEngine::new();
         let plaintext = b"Direct encryption test";
-        
+
         let key = CryptoEngine::generate_random_key().unwrap();
         let nonce = CryptoEngine::generate_nonce().unwrap();
-        
+
         let ciphertext = engine.encrypt_direct(plaintext, &key, &nonce).unwrap();
         let decrypted = engine.decrypt_direct(&ciphertext, &key, &nonce).unwrap();
-        
+
         assert_eq!(plaintext, decrypted.as_slice());
     }
 
@@ -834,18 +899,21 @@ mod tests {
         let engine = CryptoEngine::new();
         let plaintext = "Test with options";
         let password = "test_password";
-        
+
         let options = EncryptionOptions::new()
             .with_description("Test secret")
             .with_type(SecretType::ApiKey)
             .with_performance_profile(PerformanceProfile::Fast);
-        
-        let encrypted = engine.encrypt_string(plaintext, password, options).await.unwrap();
+
+        let encrypted = engine
+            .encrypt_string(plaintext, password, options)
+            .await
+            .unwrap();
         let metadata = encrypted.metadata();
-        
+
         assert_eq!(metadata.description.as_ref().unwrap(), "Test secret");
         assert_eq!(metadata.secret_type.as_ref().unwrap(), &SecretType::ApiKey);
-        
+
         let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
         assert_eq!(plaintext, decrypted);
     }
@@ -854,17 +922,26 @@ mod tests {
     fn test_performance_benchmark() {
         let engine = CryptoEngine::new();
         let benchmark = engine.benchmark_performance().unwrap();
-        
+
         println!("Performance Benchmark:");
         println!("  Profile: {:?}", benchmark.profile);
         println!("  Key derivation: {:.2}ms", benchmark.key_derivation_ms);
         println!("  Encryption: {:.3}ms", benchmark.encryption_ms);
         println!("  Decryption: {:.3}ms", benchmark.decryption_ms);
         println!("  Total: {:.2}ms", benchmark.total_ms);
-        println!("  Encryption throughput: {:.2} MB/s", benchmark.encryption_throughput_mbps());
-        println!("  Decryption throughput: {:.2} MB/s", benchmark.decryption_throughput_mbps());
-        println!("  Meets target (<1ms): {}", benchmark.meets_performance_target());
-        
+        println!(
+            "  Encryption throughput: {:.2} MB/s",
+            benchmark.encryption_throughput_mbps()
+        );
+        println!(
+            "  Decryption throughput: {:.2} MB/s",
+            benchmark.decryption_throughput_mbps()
+        );
+        println!(
+            "  Meets target (<1ms): {}",
+            benchmark.meets_performance_target()
+        );
+
         // Basic sanity checks
         assert!(benchmark.key_derivation_ms > 0.0);
         assert!(benchmark.encryption_ms > 0.0);
@@ -878,13 +955,19 @@ mod tests {
         let plaintext = "Secret data";
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        
-        let encrypted = engine.encrypt_string(plaintext, password, EncryptionOptions::new()).await.unwrap();
-        
+
+        let encrypted = engine
+            .encrypt_string(plaintext, password, EncryptionOptions::new())
+            .await
+            .unwrap();
+
         assert!(!engine.verify_password(&encrypted, wrong_password));
-        
+
         let result = engine.decrypt_to_string(&encrypted, wrong_password);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), CryptoError::AuthenticationFailed));
+        assert!(matches!(
+            result.unwrap_err(),
+            CryptoError::AuthenticationFailed
+        ));
     }
 }

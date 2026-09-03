@@ -1,10 +1,13 @@
 //! Encrypted secret storage with automatic zeroization
 
-use crate::crypto::{CryptoError, CryptoResult, defaults, DerivedKey};
-use chacha20poly1305::{ChaCha20Poly1305, Nonce, aead::{Aead, KeyInit}};
+use crate::crypto::{defaults, CryptoError, CryptoResult, DerivedKey};
+use chacha20poly1305::{
+    aead::{Aead, KeyInit},
+    ChaCha20Poly1305, Nonce,
+};
 use serde::{Deserialize, Serialize};
-use zeroize::ZeroizeOnDrop;
 use std::fmt;
+use zeroize::ZeroizeOnDrop;
 
 /// An encrypted secret that automatically zeroizes plaintext data
 #[derive(Clone, Serialize, Deserialize)]
@@ -224,18 +227,20 @@ impl EncryptedSecret {
 
     /// Serialize to bytes (bincode)
     pub fn to_bytes(&self) -> CryptoResult<Vec<u8>> {
-        bincode::serialize(self)
-            .map_err(|e| CryptoError::serialization(e.to_string()))
+        bincode::serialize(self).map_err(|e| CryptoError::serialization(e.to_string()))
     }
 
     /// Deserialize from bytes (bincode)
     pub fn from_bytes(bytes: &[u8]) -> CryptoResult<Self> {
-        bincode::deserialize(bytes)
-            .map_err(|e| CryptoError::serialization(e.to_string()))
+        bincode::deserialize(bytes).map_err(|e| CryptoError::serialization(e.to_string()))
     }
 
     /// Create a new secret with updated encryption (re-encrypt with new password)
-    pub fn reencrypt_with_password(&self, old_password: &str, new_password: &str) -> CryptoResult<Self> {
+    pub fn reencrypt_with_password(
+        &self,
+        old_password: &str,
+        new_password: &str,
+    ) -> CryptoResult<Self> {
         let plaintext = self.decrypt_with_password(old_password)?;
         Self::encrypt_with_password(plaintext, new_password, Some(self.metadata.clone()))
     }
@@ -314,14 +319,15 @@ mod tests {
     fn test_encrypt_decrypt_string() {
         let secret_data = "This is a secret message!";
         let password = "test_password_123";
-        
+
         let plaintext = PlaintextSecret::from_string(secret_data.to_string());
         let encrypted = EncryptedSecret::encrypt_with_password(
             plaintext,
             password,
             Some(SecretMetadata::with_description("Test secret")),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let decrypted = encrypted.decrypt_with_password(password).unwrap();
         assert_eq!(decrypted.as_string().unwrap(), secret_data);
     }
@@ -330,14 +336,10 @@ mod tests {
     fn test_encrypt_decrypt_bytes() {
         let secret_data = vec![1, 2, 3, 4, 5, 255, 0, 128];
         let password = "test_password_123";
-        
+
         let plaintext = PlaintextSecret::from_bytes(secret_data.clone());
-        let encrypted = EncryptedSecret::encrypt_with_password(
-            plaintext,
-            password,
-            None,
-        ).unwrap();
-        
+        let encrypted = EncryptedSecret::encrypt_with_password(plaintext, password, None).unwrap();
+
         let decrypted = encrypted.decrypt_with_password(password).unwrap();
         assert_eq!(decrypted.as_bytes(), &secret_data);
     }
@@ -347,23 +349,26 @@ mod tests {
         let secret_data = "This is a secret message!";
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        
+
         let plaintext = PlaintextSecret::from_string(secret_data.to_string());
         let encrypted = EncryptedSecret::encrypt_with_password(plaintext, password, None).unwrap();
-        
+
         let result = encrypted.decrypt_with_password(wrong_password);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), CryptoError::AuthenticationFailed));
+        assert!(matches!(
+            result.unwrap_err(),
+            CryptoError::AuthenticationFailed
+        ));
     }
 
     #[test]
     fn test_password_verification() {
         let secret_data = "secret";
         let password = "test_password";
-        
+
         let plaintext = PlaintextSecret::from_string(secret_data.to_string());
         let encrypted = EncryptedSecret::encrypt_with_password(plaintext, password, None).unwrap();
-        
+
         assert!(encrypted.verify_password(password));
         assert!(!encrypted.verify_password("wrong_password"));
     }
@@ -372,17 +377,18 @@ mod tests {
     fn test_json_serialization() {
         let secret_data = "This is a secret message!";
         let password = "test_password_123";
-        
+
         let plaintext = PlaintextSecret::from_string(secret_data.to_string());
         let encrypted = EncryptedSecret::encrypt_with_password(
             plaintext,
             password,
             Some(SecretMetadata::with_description("Test secret")),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let json = encrypted.to_json().unwrap();
         let deserialized = EncryptedSecret::from_json(&json).unwrap();
-        
+
         let decrypted = deserialized.decrypt_with_password(password).unwrap();
         assert_eq!(decrypted.as_string().unwrap(), secret_data);
     }
@@ -392,15 +398,18 @@ mod tests {
         let secret_data = "This is a secret message!";
         let old_password = "old_password";
         let new_password = "new_password";
-        
+
         let plaintext = PlaintextSecret::from_string(secret_data.to_string());
-        let encrypted = EncryptedSecret::encrypt_with_password(plaintext, old_password, None).unwrap();
-        
-        let reencrypted = encrypted.reencrypt_with_password(old_password, new_password).unwrap();
-        
+        let encrypted =
+            EncryptedSecret::encrypt_with_password(plaintext, old_password, None).unwrap();
+
+        let reencrypted = encrypted
+            .reencrypt_with_password(old_password, new_password)
+            .unwrap();
+
         // Old password should not work
         assert!(!reencrypted.verify_password(old_password));
-        
+
         // New password should work
         let decrypted = reencrypted.decrypt_with_password(new_password).unwrap();
         assert_eq!(decrypted.as_string().unwrap(), secret_data);
@@ -414,8 +423,11 @@ mod tests {
             .add_tag("production")
             .add_tag("api")
             .set_type(SecretType::ApiKey);
-        
-        assert_eq!(metadata.description.as_ref().unwrap(), "API Key for service X");
+
+        assert_eq!(
+            metadata.description.as_ref().unwrap(),
+            "API Key for service X"
+        );
         assert_eq!(metadata.tags, vec!["production", "api"]);
         assert_eq!(metadata.secret_type.as_ref().unwrap(), &SecretType::ApiKey);
         assert!(metadata.created_at.is_some());
@@ -425,17 +437,20 @@ mod tests {
     fn test_secret_types() {
         assert_eq!(SecretType::Generic.to_string(), "generic");
         assert_eq!(SecretType::ApiKey.to_string(), "api_key");
-        assert_eq!(SecretType::Custom("jwt".to_string()).to_string(), "custom:jwt");
+        assert_eq!(
+            SecretType::Custom("jwt".to_string()).to_string(),
+            "custom:jwt"
+        );
     }
 
     #[test]
     fn test_plaintext_secret_zeroization() {
         let data = "sensitive_data".to_string();
         let secret = PlaintextSecret::from_string(data);
-        
+
         assert_eq!(secret.len(), 14);
         assert!(!secret.is_empty());
-        
+
         // Secret should be automatically zeroized when dropped
         drop(secret);
         // Can't test the actual zeroization as we can't access the memory after drop
