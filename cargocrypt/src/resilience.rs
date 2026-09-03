@@ -4,10 +4,10 @@
 //! features to ensure CargoCrypt continues to function even when some
 //! components or dependencies are unavailable.
 
-use std::time::{Duration, Instant};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{error, warn, info, debug};
+use tracing::{debug, error, info, warn};
 
 /// Circuit breaker pattern for handling repeated failures
 #[derive(Debug, Clone)]
@@ -23,9 +23,9 @@ pub struct CircuitBreaker {
 /// States of a circuit breaker
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CircuitBreakerState {
-    Closed,    // Normal operation
-    Open,      // Failing, blocking calls
-    HalfOpen,  // Testing if service has recovered
+    Closed,   // Normal operation
+    Open,     // Failing, blocking calls
+    HalfOpen, // Testing if service has recovered
 }
 
 impl CircuitBreaker {
@@ -48,7 +48,7 @@ impl CircuitBreaker {
     {
         // Check current state
         let state = *self.state.read().await;
-        
+
         match state {
             CircuitBreakerState::Open => {
                 // Check if timeout has elapsed
@@ -87,7 +87,10 @@ impl CircuitBreaker {
 
                 if *count >= self.failure_threshold {
                     *self.state.write().await = CircuitBreakerState::Open;
-                    warn!("Circuit breaker {} opened after {} failures", self.name, count);
+                    warn!(
+                        "Circuit breaker {} opened after {} failures",
+                        self.name, count
+                    );
                     Err(CircuitBreakerError::CircuitOpened)
                 } else {
                     Err(CircuitBreakerError::OperationFailed(error))
@@ -159,7 +162,10 @@ impl RetryPolicy {
             match operation().await {
                 Ok(result) => {
                     if attempt > 1 {
-                        info!("Operation succeeded on attempt {}/{}", attempt, self.max_attempts);
+                        info!(
+                            "Operation succeeded on attempt {}/{}",
+                            attempt, self.max_attempts
+                        );
                     }
                     return Ok(result);
                 }
@@ -169,17 +175,21 @@ impl RetryPolicy {
                         return Err(error);
                     }
 
-                    warn!("Operation failed on attempt {}/{}, retrying in {:?}: {:?}", 
-                          attempt, self.max_attempts, delay, error);
-                    
+                    warn!(
+                        "Operation failed on attempt {}/{}, retrying in {:?}: {:?}",
+                        attempt, self.max_attempts, delay, error
+                    );
+
                     tokio::time::sleep(delay).await;
-                    
+
                     // Calculate next delay with exponential backoff
                     delay = std::cmp::min(
-                        Duration::from_millis((delay.as_millis() as f64 * self.backoff_multiplier) as u64),
-                        self.max_delay
+                        Duration::from_millis(
+                            (delay.as_millis() as f64 * self.backoff_multiplier) as u64,
+                        ),
+                        self.max_delay,
                     );
-                    
+
                     attempt += 1;
                 }
             }
@@ -203,30 +213,52 @@ impl GracefulDegradation {
 
     /// Register a feature that can be disabled
     pub async fn register_feature(&self, name: &str, enabled: bool) {
-        self.feature_flags.write().await.insert(name.to_string(), enabled);
+        self.feature_flags
+            .write()
+            .await
+            .insert(name.to_string(), enabled);
     }
 
     /// Check if a feature is enabled
     pub async fn is_feature_enabled(&self, name: &str) -> bool {
-        self.feature_flags.read().await.get(name).copied().unwrap_or(false)
+        self.feature_flags
+            .read()
+            .await
+            .get(name)
+            .copied()
+            .unwrap_or(false)
     }
 
     /// Disable a feature (graceful degradation)
     pub async fn disable_feature(&self, name: &str, reason: &str) {
-        self.feature_flags.write().await.insert(name.to_string(), false);
+        self.feature_flags
+            .write()
+            .await
+            .insert(name.to_string(), false);
         warn!("Feature '{}' disabled: {}", name, reason);
     }
 
     /// Enable a feature
     pub async fn enable_feature(&self, name: &str) {
-        self.feature_flags.write().await.insert(name.to_string(), true);
+        self.feature_flags
+            .write()
+            .await
+            .insert(name.to_string(), true);
         info!("Feature '{}' enabled", name);
     }
 
     /// Register a circuit breaker for a service
-    pub async fn register_circuit_breaker(&self, name: &str, failure_threshold: u32, timeout: Duration) {
+    pub async fn register_circuit_breaker(
+        &self,
+        name: &str,
+        failure_threshold: u32,
+        timeout: Duration,
+    ) {
         let breaker = CircuitBreaker::new(name.to_string(), failure_threshold, timeout);
-        self.circuit_breakers.write().await.insert(name.to_string(), breaker);
+        self.circuit_breakers
+            .write()
+            .await
+            .insert(name.to_string(), breaker);
     }
 
     /// Get a circuit breaker by name
@@ -237,7 +269,7 @@ impl GracefulDegradation {
     /// Check system health and disable problematic features
     pub async fn health_check(&self) -> HealthStatus {
         let mut status = HealthStatus::new();
-        
+
         // Check all circuit breakers
         let breakers = self.circuit_breakers.read().await;
         for (name, breaker) in breakers.iter() {
@@ -245,10 +277,15 @@ impl GracefulDegradation {
             match state {
                 CircuitBreakerState::Open => {
                     status.add_issue(name, "Circuit breaker is open", HealthSeverity::Critical);
-                    self.disable_feature(name, "Circuit breaker protection").await;
+                    self.disable_feature(name, "Circuit breaker protection")
+                        .await;
                 }
                 CircuitBreakerState::HalfOpen => {
-                    status.add_issue(name, "Circuit breaker is half-open", HealthSeverity::Warning);
+                    status.add_issue(
+                        name,
+                        "Circuit breaker is half-open",
+                        HealthSeverity::Warning,
+                    );
                 }
                 CircuitBreakerState::Closed => {
                     status.add_healthy_component(name);
@@ -258,7 +295,7 @@ impl GracefulDegradation {
 
         // Check system resources
         status.check_system_resources().await;
-        
+
         status
     }
 }
@@ -311,12 +348,15 @@ impl HealthStatus {
     }
 
     pub fn add_healthy_component(&mut self, name: &str) {
-        self.components.insert(name.to_string(), ComponentHealth {
-            name: name.to_string(),
-            status: HealthLevel::Healthy,
-            last_check: Instant::now(),
-            message: None,
-        });
+        self.components.insert(
+            name.to_string(),
+            ComponentHealth {
+                name: name.to_string(),
+                status: HealthLevel::Healthy,
+                last_check: Instant::now(),
+                message: None,
+            },
+        );
     }
 
     pub fn add_issue(&mut self, component: &str, message: &str, severity: HealthSeverity) {
@@ -334,17 +374,21 @@ impl HealthStatus {
             HealthSeverity::Info => HealthLevel::Healthy,
         };
 
-        self.components.insert(component.to_string(), ComponentHealth {
-            name: component.to_string(),
-            status: component_status,
-            last_check: Instant::now(),
-            message: Some(message.to_string()),
-        });
+        self.components.insert(
+            component.to_string(),
+            ComponentHealth {
+                name: component.to_string(),
+                status: component_status,
+                last_check: Instant::now(),
+                message: Some(message.to_string()),
+            },
+        );
 
         // Update overall health
         if severity == HealthSeverity::Critical {
             self.overall_health = HealthLevel::Critical;
-        } else if severity == HealthSeverity::Warning && self.overall_health == HealthLevel::Healthy {
+        } else if severity == HealthSeverity::Warning && self.overall_health == HealthLevel::Healthy
+        {
             self.overall_health = HealthLevel::Degraded;
         }
     }
@@ -352,7 +396,8 @@ impl HealthStatus {
     pub async fn check_system_resources(&mut self) {
         // Check available memory
         if let Ok(memory) = self.get_available_memory() {
-            if memory < 100 * 1024 * 1024 { // Less than 100MB
+            if memory < 100 * 1024 * 1024 {
+                // Less than 100MB
                 self.add_issue("memory", "Low available memory", HealthSeverity::Warning);
             } else {
                 self.add_healthy_component("memory");
@@ -361,7 +406,8 @@ impl HealthStatus {
 
         // Check disk space for temp directory
         if let Ok(disk_space) = self.get_available_disk_space() {
-            if disk_space < 500 * 1024 * 1024 { // Less than 500MB
+            if disk_space < 500 * 1024 * 1024 {
+                // Less than 500MB
                 self.add_issue("disk", "Low disk space", HealthSeverity::Warning);
             } else {
                 self.add_healthy_component("disk");
@@ -385,7 +431,7 @@ impl HealthStatus {
                 }
             }
         }
-        
+
         // Fallback - assume we have enough memory
         Ok(1024 * 1024 * 1024) // 1GB
     }
@@ -393,7 +439,7 @@ impl HealthStatus {
     fn get_available_disk_space(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // Simplified disk space check
         use std::fs;
-        
+
         let temp_dir = std::env::temp_dir();
         if let Ok(_metadata) = fs::metadata(&temp_dir) {
             // This is a very rough estimate - real implementation would use statvfs or similar
@@ -417,7 +463,11 @@ macro_rules! with_error_recovery {
         match $operation {
             Ok(result) => result,
             Err(error) => {
-                tracing::warn!("Operation failed in {}: {:?}, using fallback", $context, error);
+                tracing::warn!(
+                    "Operation failed in {}: {:?}, using fallback",
+                    $context,
+                    error
+                );
                 $fallback
             }
         }
@@ -430,18 +480,14 @@ macro_rules! with_circuit_breaker {
     ($breaker:expr, $operation:expr) => {
         match $breaker.execute(|| $operation).await {
             Ok(result) => Ok(result),
-            Err(CircuitBreakerError::CircuitOpen) => {
-                Err(CargoCryptError::ServiceUnavailable {
-                    service: "protected operation".to_string(),
-                    reason: "Circuit breaker is open".to_string(),
-                })
-            }
-            Err(CircuitBreakerError::CircuitOpened) => {
-                Err(CargoCryptError::ServiceUnavailable {
-                    service: "protected operation".to_string(),
-                    reason: "Circuit breaker opened due to failures".to_string(),
-                })
-            }
+            Err(CircuitBreakerError::CircuitOpen) => Err(CargoCryptError::ServiceUnavailable {
+                service: "protected operation".to_string(),
+                reason: "Circuit breaker is open".to_string(),
+            }),
+            Err(CircuitBreakerError::CircuitOpened) => Err(CargoCryptError::ServiceUnavailable {
+                service: "protected operation".to_string(),
+                reason: "Circuit breaker opened due to failures".to_string(),
+            }),
             Err(CircuitBreakerError::OperationFailed(error)) => Err(error),
         }
     };
@@ -455,26 +501,26 @@ mod tests {
     #[tokio::test]
     async fn test_circuit_breaker() {
         let breaker = CircuitBreaker::new("test".to_string(), 2, Duration::from_millis(100));
-        
+
         // Should start closed
         assert_eq!(breaker.get_state().await, CircuitBreakerState::Closed);
-        
+
         // Fail twice to open circuit
         let _ = breaker.execute(|| Err::<(), &str>("test error")).await;
         let _ = breaker.execute(|| Err::<(), &str>("test error")).await;
-        
+
         // Should now be open
         assert_eq!(breaker.get_state().await, CircuitBreakerState::Open);
-        
+
         // Should fail fast
         let result = breaker.execute(|| Ok::<(), &str>(())).await;
         assert!(matches!(result, Err(CircuitBreakerError::CircuitOpen)));
-        
+
         // Wait for timeout and try again
         sleep(Duration::from_millis(150)).await;
         let result = breaker.execute(|| Ok::<(), &str>(())).await;
         assert!(result.is_ok());
-        
+
         // Should be closed again
         assert_eq!(breaker.get_state().await, CircuitBreakerState::Closed);
     }
@@ -483,18 +529,20 @@ mod tests {
     async fn test_retry_policy() {
         let policy = RetryPolicy::new(3, Duration::from_millis(10));
         let mut attempts = 0;
-        
-        let result = policy.execute(|| {
-            attempts += 1;
-            async move {
-                if attempts < 3 {
-                    Err("temporary failure")
-                } else {
-                    Ok("success")
+
+        let result = policy
+            .execute(|| {
+                attempts += 1;
+                async move {
+                    if attempts < 3 {
+                        Err("temporary failure")
+                    } else {
+                        Ok("success")
+                    }
                 }
-            }
-        }).await;
-        
+            })
+            .await;
+
         assert_eq!(result, Ok("success"));
         assert_eq!(attempts, 3);
     }
@@ -502,13 +550,13 @@ mod tests {
     #[tokio::test]
     async fn test_graceful_degradation() {
         let gd = GracefulDegradation::new();
-        
+
         // Register features
         gd.register_feature("tui", true).await;
         gd.register_feature("git_integration", true).await;
-        
+
         assert!(gd.is_feature_enabled("tui").await);
-        
+
         // Disable feature
         gd.disable_feature("tui", "testing").await;
         assert!(!gd.is_feature_enabled("tui").await);

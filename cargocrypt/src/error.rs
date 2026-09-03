@@ -122,9 +122,9 @@ impl CargoCryptError {
     pub fn severity(&self) -> ErrorSeverity {
         match self {
             CargoCryptError::Crypto { kind, .. } => match kind {
-                CryptoErrorKind::AuthenticationFailed |
-                CryptoErrorKind::Decryption |
-                CryptoErrorKind::InvalidKey => ErrorSeverity::Critical,
+                CryptoErrorKind::AuthenticationFailed
+                | CryptoErrorKind::Decryption
+                | CryptoErrorKind::InvalidKey => ErrorSeverity::Critical,
                 _ => ErrorSeverity::Warning,
             },
             CargoCryptError::Validation { .. } => ErrorSeverity::Warning,
@@ -208,7 +208,9 @@ impl CargoCryptError {
     /// Create an authentication failure error
     pub fn authentication_failed() -> Self {
         Self::Crypto {
-            message: "Authentication tag verification failed - data may be corrupted or tampered with".to_string(),
+            message:
+                "Authentication tag verification failed - data may be corrupted or tampered with"
+                    .to_string(),
             kind: CryptoErrorKind::AuthenticationFailed,
         }
     }
@@ -249,10 +251,9 @@ impl CargoCryptError {
                     | std::io::ErrorKind::ConnectionRefused
                     | std::io::ErrorKind::TimedOut
             ),
-            CargoCryptError::Crypto { kind, .. } => matches!(
-                kind,
-                CryptoErrorKind::RandomGenerationFailed
-            ),
+            CargoCryptError::Crypto { kind, .. } => {
+                matches!(kind, CryptoErrorKind::RandomGenerationFailed)
+            }
             _ => false,
         }
     }
@@ -262,8 +263,13 @@ impl CargoCryptError {
         match self {
             CargoCryptError::Config { suggestion, .. } => suggestion.as_deref(),
             CargoCryptError::Project { suggestion, .. } => suggestion.as_deref(),
-            CargoCryptError::Auth { retry_suggestion, .. } => retry_suggestion.as_deref(),
-            CargoCryptError::KeyManagement { recovery_suggestion, .. } => recovery_suggestion.as_deref(),
+            CargoCryptError::Auth {
+                retry_suggestion, ..
+            } => retry_suggestion.as_deref(),
+            CargoCryptError::KeyManagement {
+                recovery_suggestion,
+                ..
+            } => recovery_suggestion.as_deref(),
             _ => None,
         }
     }
@@ -283,7 +289,7 @@ impl From<std::io::Error> for CargoCryptError {
 impl From<crate::crypto::CryptoError> for CargoCryptError {
     fn from(error: crate::crypto::CryptoError) -> Self {
         use crate::crypto::CryptoError;
-        
+
         let kind = match &error {
             CryptoError::KeyDerivation { .. } => CryptoErrorKind::KeyDerivation,
             CryptoError::Encryption { .. } => CryptoErrorKind::Encryption,
@@ -294,7 +300,7 @@ impl From<crate::crypto::CryptoError> for CargoCryptError {
             CryptoError::RandomGeneration { .. } => CryptoErrorKind::RandomGenerationFailed,
             _ => CryptoErrorKind::Encryption, // Default fallback
         };
-        
+
         Self::Crypto {
             message: error.to_string(),
             kind,

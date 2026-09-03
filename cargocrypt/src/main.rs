@@ -2,7 +2,7 @@
 //!
 //! Zero-config cryptographic operations for Rust projects
 
-use cargocrypt::{CargoCrypt, CryptoResult, CargoCryptError};
+use cargocrypt::{CargoCrypt, CargoCryptError, CryptoResult};
 use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 use std::{path::PathBuf, sync::Arc};
@@ -23,14 +23,14 @@ enum Commands {
         git: bool,
     },
     /// Encrypt a file
-    Encrypt { 
+    Encrypt {
         file: PathBuf,
         /// Read password from stdin instead of prompting
         #[arg(long)]
         password_stdin: bool,
     },
     /// Decrypt a file
-    Decrypt { 
+    Decrypt {
         file: PathBuf,
         /// Read password from stdin instead of prompting
         #[arg(long)]
@@ -107,59 +107,69 @@ async fn main() -> CryptoResult<()> {
         Commands::Init { git } => {
             CargoCrypt::init_project().await?;
             println!("✅ CargoCrypt initialized successfully!");
-            
+
             if git {
                 // Initialize git integration
                 use cargocrypt::git::GitIntegration;
-                
+
                 println!("🔧 Setting up Git integration...");
                 let mut git_integration = GitIntegration::new().await?;
                 git_integration.setup_repository().await?;
                 println!("✅ Git integration configured successfully!");
             }
         }
-        Commands::Encrypt { file, password_stdin } => {
+        Commands::Encrypt {
+            file,
+            password_stdin,
+        } => {
             let crypt = CargoCrypt::new().await?;
-            
+
             let password = if password_stdin {
                 // Read password from stdin
                 use std::io::{self, BufRead};
                 let stdin = io::stdin();
                 let mut handle = stdin.lock();
                 let mut password = String::new();
-                handle.read_line(&mut password).map_err(|e| CargoCryptError::from(e))?;
+                handle
+                    .read_line(&mut password)
+                    .map_err(|e| CargoCryptError::from(e))?;
                 password.trim().to_string()
             } else {
                 // Prompt for password with confirmation
                 let password = prompt_password("Enter password for encryption: ")?;
                 let password_confirm = prompt_password("Confirm password: ")?;
-                
+
                 if password != password_confirm {
                     eprintln!("❌ Error: Passwords do not match");
                     std::process::exit(1);
                 }
                 password
             };
-            
+
             let encrypted_file = crypt.encrypt_file(&file, &password).await?;
             println!("✅ File encrypted: {}", encrypted_file.display());
         }
-        Commands::Decrypt { file, password_stdin } => {
+        Commands::Decrypt {
+            file,
+            password_stdin,
+        } => {
             let crypt = CargoCrypt::new().await?;
-            
+
             let password = if password_stdin {
                 // Read password from stdin
                 use std::io::{self, BufRead};
                 let stdin = io::stdin();
                 let mut handle = stdin.lock();
                 let mut password = String::new();
-                handle.read_line(&mut password).map_err(|e| CargoCryptError::from(e))?;
+                handle
+                    .read_line(&mut password)
+                    .map_err(|e| CargoCryptError::from(e))?;
                 password.trim().to_string()
             } else {
                 // Prompt for password
                 prompt_password("Enter password for decryption: ")?
             };
-            
+
             let decrypted_file = crypt.decrypt_file(&file, &password).await?;
             println!("✅ File decrypted: {}", decrypted_file.display());
         }
@@ -192,21 +202,21 @@ async fn main() -> CryptoResult<()> {
 }
 
 async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
-    use cargocrypt::git::{GitIntegration, GitHooks, GitAttributes, GitIgnoreManager};
-    
+    use cargocrypt::git::{GitAttributes, GitHooks, GitIgnoreManager, GitIntegration};
+
     match cmd {
         GitCommands::InstallHooks => {
             let git_integration = GitIntegration::new().await?;
             let hooks = GitHooks::new(git_integration.repo())?;
-            
+
             println!("🔧 Installing Git hooks...");
-            
+
             // Install secret detection hook
             hooks.install_secret_detection_hook().await?;
-            
-            // Install encryption validation hook  
+
+            // Install encryption validation hook
             hooks.install_encryption_validation_hook().await?;
-            
+
             println!("✅ Git hooks installed successfully!");
             println!("   - Pre-commit: Secret detection");
             println!("   - Pre-push: Encryption validation");
@@ -214,7 +224,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
         GitCommands::UninstallHooks => {
             let git_integration = GitIntegration::new().await?;
             let hooks = GitHooks::new(git_integration.repo())?;
-            
+
             println!("🔧 Uninstalling Git hooks...");
             hooks.uninstall_hooks().await?;
             println!("✅ Git hooks removed successfully!");
@@ -222,18 +232,20 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
         GitCommands::ConfigureAttributes => {
             let git_integration = GitIntegration::new().await?;
             let mut attributes = GitAttributes::new(git_integration.repo())?;
-            
+
             println!("🔧 Configuring Git attributes...");
-            
+
             // Add default CargoCrypt patterns
             attributes.add_cargocrypt_patterns().await?;
-            
+
             // Configure filters
-            attributes.configure_filters(git_integration.config()).await?;
-            
+            attributes
+                .configure_filters(git_integration.config())
+                .await?;
+
             // Save attributes
             attributes.save().await?;
-            
+
             println!("✅ Git attributes configured successfully!");
             println!("   Patterns added for automatic encryption:");
             for pattern in attributes.get_patterns() {
@@ -243,93 +255,100 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
         GitCommands::FilterClean { .. } => {
             // This is called by git during staging
             // Read from stdin, encrypt, write to stdout
-            use std::io::{self, Read, Write};
             use cargocrypt::CargoCrypt;
-            
+            use std::io::{self, Read, Write};
+
             let mut input = Vec::new();
-            io::stdin().read_to_end(&mut input)
+            io::stdin()
+                .read_to_end(&mut input)
                 .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
-            
+
             // Get password from git config or environment
-            let password = std::env::var("CARGOCRYPT_PASSWORD")
-                .unwrap_or_else(|_| {
-                    // Try to read from git config
-                    std::process::Command::new("git")
-                        .args(&["config", "--get", "cargocrypt.password"])
-                        .output()
-                        .ok()
-                        .and_then(|output| {
-                            if output.status.success() {
-                                String::from_utf8(output.stdout).ok()
-                                    .map(|s| s.trim().to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_else(|| "default-password".to_string())
-                });
-            
+            let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
+                // Try to read from git config
+                std::process::Command::new("git")
+                    .args(&["config", "--get", "cargocrypt.password"])
+                    .output()
+                    .ok()
+                    .and_then(|output| {
+                        if output.status.success() {
+                            String::from_utf8(output.stdout)
+                                .ok()
+                                .map(|s| s.trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "default-password".to_string())
+            });
+
             let crypt = CargoCrypt::new().await?;
             let encrypted = crypt.crypto().encrypt_data(&input, &password).await?;
-            
+
             // Output encrypted data
-            let encrypted_bytes = bincode::serialize(&encrypted)
-                .map_err(|e| cargocrypt::error::CargoCryptError::Serialization { 
-                    message: format!("Failed to serialize: {}", e), 
-                    source: Box::new(e) 
-                })?;
-            io::stdout().write_all(&encrypted_bytes)
+            let encrypted_bytes = bincode::serialize(&encrypted).map_err(|e| {
+                cargocrypt::error::CargoCryptError::Serialization {
+                    message: format!("Failed to serialize: {}", e),
+                    source: Box::new(e),
+                }
+            })?;
+            io::stdout()
+                .write_all(&encrypted_bytes)
                 .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
         }
         GitCommands::FilterSmudge { .. } => {
             // This is called by git during checkout
             // Read from stdin, decrypt, write to stdout
+            use cargocrypt::{crypto::EncryptedSecret, CargoCrypt};
             use std::io::{self, Read, Write};
-            use cargocrypt::{CargoCrypt, crypto::EncryptedSecret};
-            
+
             let mut input = Vec::new();
-            io::stdin().read_to_end(&mut input)
+            io::stdin()
+                .read_to_end(&mut input)
                 .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
-            
+
             // Get password from git config or environment
-            let password = std::env::var("CARGOCRYPT_PASSWORD")
-                .unwrap_or_else(|_| {
-                    // Try to read from git config
-                    std::process::Command::new("git")
-                        .args(&["config", "--get", "cargocrypt.password"])
-                        .output()
-                        .ok()
-                        .and_then(|output| {
-                            if output.status.success() {
-                                String::from_utf8(output.stdout).ok()
-                                    .map(|s| s.trim().to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_else(|| "default-password".to_string())
-                });
-            
+            let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
+                // Try to read from git config
+                std::process::Command::new("git")
+                    .args(&["config", "--get", "cargocrypt.password"])
+                    .output()
+                    .ok()
+                    .and_then(|output| {
+                        if output.status.success() {
+                            String::from_utf8(output.stdout)
+                                .ok()
+                                .map(|s| s.trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "default-password".to_string())
+            });
+
             let crypt = CargoCrypt::new().await?;
-            
+
             // Try to deserialize and decrypt
             match bincode::deserialize::<EncryptedSecret>(&input) {
                 Ok(encrypted) => {
                     match crypt.crypto().decrypt_data(&encrypted, &password) {
                         Ok(decrypted) => {
-                            io::stdout().write_all(&decrypted)
+                            io::stdout()
+                                .write_all(&decrypted)
                                 .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
                         }
                         Err(_) => {
                             // If decryption fails, output original (might not be encrypted)
-                            io::stdout().write_all(&input)
+                            io::stdout()
+                                .write_all(&input)
                                 .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
                         }
                     }
                 }
                 Err(_) => {
                     // If deserialization fails, output original (not encrypted)
-                    io::stdout().write_all(&input)
+                    io::stdout()
+                        .write_all(&input)
                         .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
                 }
             }
@@ -337,15 +356,15 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
         GitCommands::UpdateIgnore => {
             let git_integration = GitIntegration::new().await?;
             let mut ignore_manager = GitIgnoreManager::new(git_integration.repo())?;
-            
+
             println!("🔧 Updating .gitignore...");
-            
+
             // Add CargoCrypt patterns
             ignore_manager.add_cargocrypt_patterns().await?;
-            
+
             // Save the updated .gitignore
             ignore_manager.save().await?;
-            
+
             println!("✅ .gitignore updated successfully!");
             println!("   Added patterns:");
             for pattern in ignore_manager.get_ignore_patterns() {
@@ -353,64 +372,92 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
 async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
-    use cargocrypt::monitoring::{MonitoringManager, MonitoringConfig, server::MonitoringServer};
+    use cargocrypt::monitoring::{server::MonitoringServer, MonitoringConfig, MonitoringManager};
     use std::net::SocketAddr;
-    
+
     // Initialize monitoring manager
     let monitoring = Arc::new(MonitoringManager::new(MonitoringConfig::default()));
-    
+
     match cmd {
         MonitorCommands::Metrics => {
             println!("📊 System Metrics");
             println!("================");
-            
+
             let metrics = monitoring.get_metrics().await;
-            
+
             // Display crypto operations
             println!("\n🔐 Crypto Operations:");
             for (op_type, summary) in &metrics.crypto_operations {
-                println!("  {}: {} ops, avg {}ms, {:.1}% errors", 
-                    op_type, summary.count, summary.avg_duration_ms, summary.error_rate * 100.0);
+                println!(
+                    "  {}: {} ops, avg {}ms, {:.1}% errors",
+                    op_type,
+                    summary.count,
+                    summary.avg_duration_ms,
+                    summary.error_rate * 100.0
+                );
             }
-            
+
             // Display file operations
             println!("\n📁 File Operations:");
             for (op_type, summary) in &metrics.file_operations {
-                println!("  {}: {} ops, avg {}ms, {:.1}% errors", 
-                    op_type, summary.count, summary.avg_duration_ms, summary.error_rate * 100.0);
+                println!(
+                    "  {}: {} ops, avg {}ms, {:.1}% errors",
+                    op_type,
+                    summary.count,
+                    summary.avg_duration_ms,
+                    summary.error_rate * 100.0
+                );
             }
-            
+
             // Display system metrics
             println!("\n🖥️  System:");
             println!("  Uptime: {}s", metrics.system_metrics.uptime_seconds);
-            println!("  Memory Peak: {:.1} MB", metrics.system_metrics.memory_peak_mb);
-            println!("  Data Encrypted: {:.1} MB", metrics.system_metrics.total_encrypted_mb);
-            println!("  Data Decrypted: {:.1} MB", metrics.system_metrics.total_decrypted_mb);
-            println!("  Files Processed: {}", metrics.system_metrics.files_processed);
+            println!(
+                "  Memory Peak: {:.1} MB",
+                metrics.system_metrics.memory_peak_mb
+            );
+            println!(
+                "  Data Encrypted: {:.1} MB",
+                metrics.system_metrics.total_encrypted_mb
+            );
+            println!(
+                "  Data Decrypted: {:.1} MB",
+                metrics.system_metrics.total_decrypted_mb
+            );
+            println!(
+                "  Files Processed: {}",
+                metrics.system_metrics.files_processed
+            );
         }
-        
+
         MonitorCommands::Dashboard => {
             println!("🖥️  Starting monitoring dashboard...");
             println!("Press 'q' to quit, arrow keys or 1-5 to navigate");
-            
+
             // Create and run monitoring dashboard
             use cargocrypt::tui::monitoring::MonitoringDashboard;
             let mut dashboard = MonitoringDashboard::new(monitoring);
-            dashboard.run().await.map_err(|e| CargoCryptError::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+            dashboard.run().await.map_err(|e| {
+                CargoCryptError::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?
         }
-        
+
         MonitorCommands::Server { port, host } => {
-            let addr: SocketAddr = format!("{}:{}", host, port).parse()
-                .map_err(|e| cargocrypt::error::CargoCryptError::Config {
+            let addr: SocketAddr = format!("{}:{}", host, port).parse().map_err(|e| {
+                cargocrypt::error::CargoCryptError::Config {
                     message: format!("Invalid address {}:{}: {}", host, port, e),
                     suggestion: Some("Please provide a valid host and port".to_string()),
-                })?;
-            
+                }
+            })?;
+
             println!("🌐 Starting monitoring server on http://{}", addr);
             println!("Available endpoints:");
             println!("  GET /health     - Health check");
@@ -418,17 +465,22 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
             println!("  GET /alerts     - Performance alerts");
             println!("  GET /throughput - Real-time throughput");
             println!("Press Ctrl+C to stop");
-            
+
             let server = MonitoringServer::new(monitoring, addr);
-            server.start().await.map_err(|e| CargoCryptError::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            server.start().await.map_err(|e| {
+                CargoCryptError::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?;
         }
-        
+
         MonitorCommands::Alerts => {
             println!("⚠️  Performance Alerts");
             println!("=====================");
-            
+
             let alerts = monitoring.check_performance_alerts().await;
-            
+
             if alerts.is_empty() {
                 println!("✅ No active alerts");
             } else {
@@ -438,19 +490,22 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
                         cargocrypt::monitoring::AlertSeverity::Warning => "🟡",
                         cargocrypt::monitoring::AlertSeverity::Info => "🔵",
                     };
-                    
-                    println!("{} {:?}: {}", severity_emoji, alert.alert_type, alert.message);
-                    
+
+                    println!(
+                        "{} {:?}: {}",
+                        severity_emoji, alert.alert_type, alert.message
+                    );
+
                     for (key, value) in &alert.metrics {
                         println!("   {}: {:.2}", key, value);
                     }
                 }
             }
         }
-        
+
         MonitorCommands::Export { output } => {
             let json = monitoring.export_metrics_json().await;
-            
+
             match output {
                 Some(file_path) => {
                     tokio::fs::write(&file_path, &json).await?;
@@ -461,25 +516,27 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
                 }
             }
         }
-        
+
         MonitorCommands::Health => {
             println!("🏥 System Health Check");
             println!("=====================");
-            
+
             let health = monitoring.health_check().await;
-            
+
             let status_emoji = match health.status {
                 cargocrypt::monitoring::HealthStatus::Healthy => "✅",
                 cargocrypt::monitoring::HealthStatus::Degraded => "⚠️",
                 cargocrypt::monitoring::HealthStatus::Critical => "🔴",
                 cargocrypt::monitoring::HealthStatus::Unknown => "❓",
             };
-            
+
             println!("{} Status: {:?}", status_emoji, health.status);
             println!("📊 Uptime: {}s", health.uptime_seconds);
-            println!("💾 Memory: {:.1} MB current, {:.1} MB peak", 
-                health.memory_stats.current_mb, health.memory_stats.peak_mb);
-            
+            println!(
+                "💾 Memory: {:.1} MB current, {:.1} MB peak",
+                health.memory_stats.current_mb, health.memory_stats.peak_mb
+            );
+
             if !health.alerts.is_empty() {
                 println!("\n⚠️  Active Alerts:");
                 for alert in &health.alerts {
@@ -488,6 +545,6 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
             }
         }
     }
-    
+
     Ok(())
 }

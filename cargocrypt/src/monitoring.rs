@@ -8,12 +8,12 @@
 //! - Real-time monitoring server
 //! - Performance bottleneck detection
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
 
 /// Central monitoring and telemetry manager
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ impl MonitoringManager {
                     .with_thread_ids(true)
                     .with_file(true)
                     .with_line_number(true)
-                    .compact()
+                    .compact(),
             )
             .with(env_filter)
             .try_init()
@@ -102,9 +102,12 @@ impl MonitoringManager {
     /// Record a cryptographic operation
     pub async fn record_crypto_operation(&self, operation: CryptoOperation) {
         let operation_type = operation.operation_type;
-        
+
         if self.config.performance_metrics {
-            self.metrics.write().await.record_crypto_operation(operation.clone());
+            self.metrics
+                .write()
+                .await
+                .record_crypto_operation(operation.clone());
         }
 
         if self.config.security_audit {
@@ -117,7 +120,10 @@ impl MonitoringManager {
     /// Record file operation metrics
     pub async fn record_file_operation(&self, operation: FileOperation) {
         if self.config.performance_metrics {
-            self.metrics.write().await.record_file_operation(operation.clone());
+            self.metrics
+                .write()
+                .await
+                .record_file_operation(operation.clone());
         }
 
         if self.config.detailed_logging {
@@ -136,7 +142,7 @@ impl MonitoringManager {
         let mut tracker = self.performance_tracker.write().await;
         tracker.start_operation(operation.to_string())
     }
-    
+
     /// End performance tracking for an operation
     pub async fn end_performance_tracking(&self, operation: &str) -> Option<Duration> {
         let mut tracker = self.performance_tracker.write().await;
@@ -235,7 +241,8 @@ impl MetricsCollector {
     }
 
     pub fn record_crypto_operation(&mut self, operation: CryptoOperation) {
-        let metrics = self.crypto_operations
+        let metrics = self
+            .crypto_operations
             .entry(operation.operation_type)
             .or_insert_with(|| OperationMetrics {
                 count: 0,
@@ -270,7 +277,8 @@ impl MetricsCollector {
     }
 
     pub fn record_file_operation(&mut self, operation: FileOperation) {
-        let metrics = self.file_operations
+        let metrics = self
+            .file_operations
             .entry(operation.operation_type)
             .or_insert_with(|| OperationMetrics {
                 count: 0,
@@ -314,7 +322,7 @@ impl MetricsCollector {
                     } else {
                         0.0
                     },
-                }
+                },
             );
         }
 
@@ -335,7 +343,7 @@ impl MetricsCollector {
                     } else {
                         0.0
                     },
-                }
+                },
             );
         }
 
@@ -345,8 +353,10 @@ impl MetricsCollector {
             system_metrics: SystemMetricsSummary {
                 uptime_seconds: self.start_time.elapsed().as_secs(),
                 memory_peak_mb: self.system_metrics.memory_usage_peak as f64 / (1024.0 * 1024.0),
-                total_encrypted_mb: self.system_metrics.total_bytes_encrypted as f64 / (1024.0 * 1024.0),
-                total_decrypted_mb: self.system_metrics.total_bytes_decrypted as f64 / (1024.0 * 1024.0),
+                total_encrypted_mb: self.system_metrics.total_bytes_encrypted as f64
+                    / (1024.0 * 1024.0),
+                total_decrypted_mb: self.system_metrics.total_bytes_decrypted as f64
+                    / (1024.0 * 1024.0),
                 files_processed: self.system_metrics.total_files_processed,
             },
             timestamp: SystemTime::now()
@@ -427,32 +437,36 @@ impl PerformanceTracker {
         self.stats.current_active_operations = self.active_operations.len();
 
         if !self.completed_operations.is_empty() {
-            let total_duration: Duration = self.completed_operations
-                .iter()
-                .map(|op| op.duration)
-                .sum();
-            
-            self.stats.average_operation_time = total_duration / self.completed_operations.len() as u32;
+            let total_duration: Duration =
+                self.completed_operations.iter().map(|op| op.duration).sum();
 
-            if let Some(slowest) = self.completed_operations
+            self.stats.average_operation_time =
+                total_duration / self.completed_operations.len() as u32;
+
+            if let Some(slowest) = self
+                .completed_operations
                 .iter()
-                .max_by_key(|op| op.duration) {
+                .max_by_key(|op| op.duration)
+            {
                 self.stats.slowest_operation = Some(slowest.name.clone());
             }
 
-            if let Some(fastest) = self.completed_operations
+            if let Some(fastest) = self
+                .completed_operations
                 .iter()
-                .min_by_key(|op| op.duration) {
+                .min_by_key(|op| op.duration)
+            {
                 self.stats.fastest_operation = Some(fastest.name.clone());
             }
 
             // Calculate operations per minute (last 10 minutes)
             let ten_minutes_ago = Instant::now() - Duration::from_secs(600);
-            let recent_ops = self.completed_operations
+            let recent_ops = self
+                .completed_operations
                 .iter()
                 .filter(|op| op.timestamp > ten_minutes_ago)
                 .count();
-            
+
             self.stats.operations_per_minute = recent_ops as f64 / 10.0;
         }
     }
@@ -460,17 +474,17 @@ impl PerformanceTracker {
     pub fn get_stats(&self) -> PerformanceStats {
         self.stats.clone()
     }
-    
+
     /// Detect performance bottlenecks based on operation history
     pub fn detect_bottlenecks(&self) -> Vec<BottleneckAlert> {
         self.bottleneck_detector.analyze(&self.completed_operations)
     }
-    
+
     /// Get current memory usage statistics
     pub fn get_memory_stats(&self) -> MemoryStats {
         self.memory_tracker.get_stats()
     }
-    
+
     /// Update memory usage tracking
     pub fn update_memory_usage(&mut self, usage: usize) {
         self.memory_tracker.update(usage);
@@ -602,7 +616,7 @@ macro_rules! trace_operation {
         let start = std::time::Instant::now();
         let result = $operation;
         let duration = start.elapsed();
-        
+
         match &result {
             Ok(_) => {
                 tracing::debug!(
@@ -620,7 +634,7 @@ macro_rules! trace_operation {
                 );
             }
         }
-        
+
         result
     }};
 }
@@ -738,9 +752,9 @@ impl Default for PerformanceThresholds {
     fn default() -> Self {
         Self {
             slow_operation_threshold: Duration::from_millis(1000), // 1 second
-            memory_usage_threshold: 100 * 1024 * 1024, // 100 MB
-            error_rate_threshold: 0.05, // 5%
-            throughput_threshold: 10.0, // 10 ops/sec minimum
+            memory_usage_threshold: 100 * 1024 * 1024,             // 100 MB
+            error_rate_threshold: 0.05,                            // 5%
+            throughput_threshold: 10.0,                            // 10 ops/sec minimum
         }
     }
 }
@@ -751,67 +765,83 @@ impl BottleneckDetector {
             thresholds: PerformanceThresholds::default(),
         }
     }
-    
+
     pub fn with_thresholds(thresholds: PerformanceThresholds) -> Self {
         Self { thresholds }
     }
-    
+
     /// Analyze operations for bottlenecks
     pub fn analyze(&self, operations: &[CompletedOperation]) -> Vec<BottleneckAlert> {
         let mut alerts = Vec::new();
-        
+
         if operations.is_empty() {
             return alerts;
         }
-        
+
         // Analyze operation durations
-        let slow_ops = operations.iter()
+        let slow_ops = operations
+            .iter()
             .filter(|op| op.duration > self.thresholds.slow_operation_threshold)
             .collect::<Vec<_>>();
-        
+
         if !slow_ops.is_empty() {
-            let avg_slow_duration = slow_ops.iter()
+            let avg_slow_duration = slow_ops
+                .iter()
                 .map(|op| op.duration.as_millis() as f64)
-                .sum::<f64>() / slow_ops.len() as f64;
-            
+                .sum::<f64>()
+                / slow_ops.len() as f64;
+
             let mut metrics = HashMap::new();
             metrics.insert("average_duration_ms".to_string(), avg_slow_duration);
             metrics.insert("slow_operation_count".to_string(), slow_ops.len() as f64);
-            
+
             alerts.push(BottleneckAlert {
                 alert_type: BottleneckType::SlowOperation,
-                severity: if avg_slow_duration > 5000.0 { AlertSeverity::Critical } else { AlertSeverity::Warning },
-                message: format!("Detected {} slow operations with average duration {:.2}ms", 
-                                slow_ops.len(), avg_slow_duration),
+                severity: if avg_slow_duration > 5000.0 {
+                    AlertSeverity::Critical
+                } else {
+                    AlertSeverity::Warning
+                },
+                message: format!(
+                    "Detected {} slow operations with average duration {:.2}ms",
+                    slow_ops.len(),
+                    avg_slow_duration
+                ),
                 operation_name: "multiple".to_string(),
                 metrics,
                 timestamp: SystemTime::now(),
             });
         }
-        
+
         // Analyze throughput
-        let recent_ops = operations.iter()
+        let recent_ops = operations
+            .iter()
             .filter(|op| op.timestamp.elapsed() < Duration::from_secs(60))
             .count();
-        
+
         let throughput = recent_ops as f64 / 60.0; // ops per second
-        
+
         if throughput < self.thresholds.throughput_threshold {
             let mut metrics = HashMap::new();
             metrics.insert("throughput_ops_per_sec".to_string(), throughput);
-            metrics.insert("threshold".to_string(), self.thresholds.throughput_threshold);
-            
+            metrics.insert(
+                "threshold".to_string(),
+                self.thresholds.throughput_threshold,
+            );
+
             alerts.push(BottleneckAlert {
                 alert_type: BottleneckType::LowThroughput,
                 severity: AlertSeverity::Warning,
-                message: format!("Low throughput detected: {:.2} ops/sec (threshold: {:.2})", 
-                                throughput, self.thresholds.throughput_threshold),
+                message: format!(
+                    "Low throughput detected: {:.2} ops/sec (threshold: {:.2})",
+                    throughput, self.thresholds.throughput_threshold
+                ),
                 operation_name: "system".to_string(),
                 metrics,
                 timestamp: SystemTime::now(),
             });
         }
-        
+
         alerts
     }
 }
@@ -825,33 +855,33 @@ impl MemoryTracker {
             start_time: Instant::now(),
         }
     }
-    
+
     pub fn update(&mut self, usage: usize) {
         self.current_usage = usage;
         if usage > self.peak_usage {
             self.peak_usage = usage;
         }
-        
+
         self.history.push(MemorySnapshot {
             usage,
             timestamp: Instant::now(),
         });
-        
+
         // Keep only last hour of data
         let cutoff = Instant::now() - Duration::from_secs(3600);
         self.history.retain(|snapshot| snapshot.timestamp > cutoff);
     }
-    
+
     pub fn get_stats(&self) -> MemoryStats {
         let uptime = self.start_time.elapsed().as_secs();
-        
+
         let average_mb = if !self.history.is_empty() {
             let total: usize = self.history.iter().map(|s| s.usage).sum();
             (total as f64 / self.history.len() as f64) / (1024.0 * 1024.0)
         } else {
             0.0
         };
-        
+
         let growth_rate = if self.history.len() > 1 && uptime > 0 {
             let initial = self.history[0].usage as f64;
             let current = self.current_usage as f64;
@@ -859,7 +889,7 @@ impl MemoryTracker {
         } else {
             0.0
         };
-        
+
         MemoryStats {
             current_mb: self.current_usage as f64 / (1024.0 * 1024.0),
             peak_mb: self.peak_usage as f64 / (1024.0 * 1024.0),
@@ -876,10 +906,10 @@ impl MonitoringManager {
         let metrics = self.get_metrics().await;
         let performance_stats = self.get_performance_stats().await;
         let performance_tracker = self.performance_tracker.read().await;
-        
+
         let alerts = performance_tracker.detect_bottlenecks();
         let memory_stats = performance_tracker.get_memory_stats();
-        
+
         // Determine overall health status
         let status = if alerts.iter().any(|a| a.severity == AlertSeverity::Critical) {
             HealthStatus::Critical
@@ -888,7 +918,7 @@ impl MonitoringManager {
         } else {
             HealthStatus::Healthy
         };
-        
+
         HealthCheck {
             status,
             timestamp: SystemTime::now(),
@@ -898,52 +928,55 @@ impl MonitoringManager {
             memory_stats,
         }
     }
-    
+
     /// Check for performance degradation and trigger alerts
     pub async fn check_performance_alerts(&self) -> Vec<BottleneckAlert> {
         let performance_tracker = self.performance_tracker.read().await;
         performance_tracker.detect_bottlenecks()
     }
-    
+
     /// Update memory usage for tracking
     pub async fn update_memory_usage(&self, usage: usize) {
         let mut tracker = self.performance_tracker.write().await;
         tracker.update_memory_usage(usage);
-        
+
         // Update system metrics
         let mut metrics = self.metrics.write().await;
         if usage > metrics.system_metrics.memory_usage_peak {
             metrics.system_metrics.memory_usage_peak = usage;
         }
     }
-    
+
     /// Get real-time throughput metrics
     pub async fn get_realtime_throughput(&self) -> HashMap<String, f64> {
         let metrics = self.metrics.read().await;
         let mut throughput = HashMap::new();
-        
+
         // Calculate throughput for each operation type
         for (op_type, op_metrics) in &metrics.crypto_operations {
             if op_metrics.total_duration.as_secs() > 0 {
-                let ops_per_sec = op_metrics.count as f64 / op_metrics.total_duration.as_secs() as f64;
+                let ops_per_sec =
+                    op_metrics.count as f64 / op_metrics.total_duration.as_secs() as f64;
                 throughput.insert(format!("crypto_{:?}", op_type), ops_per_sec);
             }
         }
-        
+
         for (op_type, op_metrics) in &metrics.file_operations {
             if op_metrics.total_duration.as_secs() > 0 {
-                let ops_per_sec = op_metrics.count as f64 / op_metrics.total_duration.as_secs() as f64;
+                let ops_per_sec =
+                    op_metrics.count as f64 / op_metrics.total_duration.as_secs() as f64;
                 throughput.insert(format!("file_{:?}", op_type), ops_per_sec);
             }
         }
-        
+
         throughput
     }
-    
+
     /// Export metrics in JSON format for external monitoring
     pub async fn export_metrics_json(&self) -> String {
         let health = self.health_check().await;
-        serde_json::to_string_pretty(&health).unwrap_or_else(|_| "{\"error\": \"failed_to_serialize\"}".to_string())
+        serde_json::to_string_pretty(&health)
+            .unwrap_or_else(|_| "{\"error\": \"failed_to_serialize\"}".to_string())
     }
 }
 
@@ -966,7 +999,7 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_collection() {
         let mut collector = MetricsCollector::new();
-        
+
         let operation = CryptoOperation {
             operation_type: CryptoOperationType::Encrypt,
             data_size: 1024,
@@ -974,9 +1007,9 @@ mod tests {
             success: true,
             error_message: None,
         };
-        
+
         collector.record_crypto_operation(operation);
-        
+
         let snapshot = collector.get_snapshot();
         assert!(snapshot.crypto_operations.contains_key("Encrypt"));
     }
@@ -984,11 +1017,11 @@ mod tests {
     #[tokio::test]
     async fn test_performance_tracking() {
         let mut tracker = PerformanceTracker::new();
-        
+
         tracker.start_operation("test_op".to_string());
         tokio::time::sleep(Duration::from_millis(10)).await;
         let duration = tracker.end_operation("test_op");
-        
+
         assert!(duration.is_some());
         assert!(duration.unwrap() >= Duration::from_millis(10));
     }
@@ -1000,29 +1033,27 @@ mod tests {
         assert!(config.performance_metrics);
         assert!(config.security_audit);
     }
-    
+
     #[test]
     fn test_bottleneck_detection() {
         let detector = BottleneckDetector::new();
-        let operations = vec![
-            CompletedOperation {
-                name: "slow_op".to_string(),
-                duration: Duration::from_secs(2), // Above threshold
-                timestamp: Instant::now(),
-            }
-        ];
-        
+        let operations = vec![CompletedOperation {
+            name: "slow_op".to_string(),
+            duration: Duration::from_secs(2), // Above threshold
+            timestamp: Instant::now(),
+        }];
+
         let alerts = detector.analyze(&operations);
         assert!(!alerts.is_empty());
         assert_eq!(alerts[0].alert_type, BottleneckType::SlowOperation);
     }
-    
+
     #[test]
     fn test_memory_tracking() {
         let mut tracker = MemoryTracker::new();
         tracker.update(1024 * 1024); // 1 MB
         tracker.update(2 * 1024 * 1024); // 2 MB
-        
+
         let stats = tracker.get_stats();
         assert_eq!(stats.current_mb, 2.0);
         assert_eq!(stats.peak_mb, 2.0);
@@ -1031,12 +1062,12 @@ mod tests {
 
 /// HTTP monitoring server module
 pub mod server {
-    use super::{MonitoringManager, HealthCheck};
-    use std::sync::Arc;
-    use std::net::SocketAddr;
-    use tokio::net::TcpListener;
+    use super::{HealthCheck, MonitoringManager};
     use serde_json;
-    use tracing::{info, warn, error};
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::net::TcpListener;
+    use tracing::{error, info, warn};
 
     /// HTTP monitoring server
     pub struct MonitoringServer {
@@ -1049,12 +1080,12 @@ pub mod server {
         pub fn new(monitoring: Arc<MonitoringManager>, addr: SocketAddr) -> Self {
             Self { monitoring, addr }
         }
-        
+
         /// Start the monitoring server
         pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let listener = TcpListener::bind(&self.addr).await?;
             info!("Monitoring server listening on {}", self.addr);
-            
+
             loop {
                 match listener.accept().await {
                     Ok((stream, peer_addr)) => {
@@ -1079,12 +1110,12 @@ pub mod server {
         monitoring: Arc<MonitoringManager>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        
+
         let mut buffer = [0; 1024];
         let bytes_read = stream.read(&mut buffer).await?;
-        
+
         let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-        
+
         if request.contains("GET /health") {
             let health = monitoring.health_check().await;
             let json = serde_json::to_string_pretty(&health)?;
@@ -1096,7 +1127,7 @@ pub mod server {
         } else {
             send_response(&mut stream, 404, "Not Found", "Endpoint not found").await?;
         }
-        
+
         Ok(())
     }
 
@@ -1107,12 +1138,9 @@ pub mod server {
         body: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         use tokio::io::AsyncWriteExt;
-        
-        let response = format!(
-            "HTTP/1.1 {} {}\r\n\r\n{}",
-            status_code, status_text, body
-        );
-        
+
+        let response = format!("HTTP/1.1 {} {}\r\n\r\n{}", status_code, status_text, body);
+
         stream.write_all(response.as_bytes()).await?;
         stream.flush().await?;
         Ok(())
@@ -1124,17 +1152,20 @@ pub mod server {
         json: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         use tokio::io::AsyncWriteExt;
-        
+
         let status_text = match status_code {
             200 => "OK",
             _ => "Error",
         };
-        
+
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            status_code, status_text, json.len(), json
+            status_code,
+            status_text,
+            json.len(),
+            json
         );
-        
+
         stream.write_all(response.as_bytes()).await?;
         stream.flush().await?;
         Ok(())

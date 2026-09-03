@@ -8,18 +8,18 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, ListState},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use std::{
-    io,
-    sync::Arc,
-    path::PathBuf,
-    fs::{self, DirEntry},
     collections::HashSet,
+    fs::{self, DirEntry},
+    io,
+    path::PathBuf,
+    sync::Arc,
     time::Duration,
 };
 
@@ -63,7 +63,7 @@ impl TuiApp {
     /// Refresh the file list for current directory
     fn refresh_files(&mut self) -> CryptoResult<()> {
         self.files.clear();
-        
+
         // Add parent directory entry
         if self.current_path.parent().is_some() {
             self.files.push(FileInfo {
@@ -76,21 +76,22 @@ impl TuiApp {
         }
 
         // Read directory entries
-        let entries = fs::read_dir(&self.current_path)
-            .map_err(|e| crate::error::CargoCryptError::from(e))?;
+        let entries =
+            fs::read_dir(&self.current_path).map_err(|e| crate::error::CargoCryptError::from(e))?;
 
         for entry in entries {
             let entry = entry.map_err(|e| crate::error::CargoCryptError::from(e))?;
             let path = entry.path();
-            
+
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("<invalid>")
                 .to_string();
-            
+
             let is_directory = path.is_dir();
-            let is_encrypted = path.extension()
+            let is_encrypted = path
+                .extension()
                 .and_then(|e| e.to_str())
                 .map(|ext| ext == "enc")
                 .unwrap_or(false);
@@ -106,13 +107,12 @@ impl TuiApp {
         }
 
         // Sort: directories first, then files
-        self.files.sort_by(|a, b| {
-            match (a.is_directory, b.is_directory) {
+        self.files
+            .sort_by(|a, b| match (a.is_directory, b.is_directory) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
                 _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
-        });
+            });
 
         self.selected_index = 0;
         self.update_list_state();
@@ -127,7 +127,8 @@ impl TuiApp {
     /// Navigate to a directory
     fn navigate_to(&mut self, path: PathBuf) -> CryptoResult<()> {
         if path.is_dir() {
-            self.current_path = path.canonicalize()
+            self.current_path = path
+                .canonicalize()
                 .map_err(|e| crate::error::CargoCryptError::from(e))?;
             self.refresh_files()?;
         }
@@ -177,7 +178,7 @@ impl TuiApp {
             // Navigation
             KeyCode::Up | KeyCode::Char('k') => self.move_up(),
             KeyCode::Down | KeyCode::Char('j') => self.move_down(),
-            
+
             // Directory navigation
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                 if let Some(file) = self.get_selected_file() {
@@ -197,7 +198,7 @@ impl TuiApp {
                     let _ = self.navigate_to(parent.to_path_buf());
                 }
             }
-            
+
             // File operations
             KeyCode::Char('e') => {
                 self.encrypt_selected_files(crypt).await?;
@@ -208,18 +209,18 @@ impl TuiApp {
             KeyCode::Char(' ') => {
                 self.toggle_selection();
             }
-            
+
             // Refresh
             KeyCode::Char('r') => {
                 let _ = self.refresh_files();
                 self.status_message = "Directory refreshed".to_string();
             }
-            
+
             // Quit
             KeyCode::Char('q') | KeyCode::Esc => {
                 self.should_quit = true;
             }
-            
+
             _ => {}
         }
         Ok(())
@@ -238,10 +239,15 @@ impl TuiApp {
                 Vec::new()
             }
         } else {
-            self.selected_files.iter()
+            self.selected_files
+                .iter()
                 .filter(|path| {
-                    !path.extension().and_then(|e| e.to_str()).map(|ext| ext == "enc").unwrap_or(false) && 
-                    path.is_file()
+                    !path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|ext| ext == "enc")
+                        .unwrap_or(false)
+                        && path.is_file()
                 })
                 .cloned()
                 .collect()
@@ -256,21 +262,22 @@ impl TuiApp {
         for file_path in &files_to_encrypt {
             // For demo purposes, use a default password
             let password = "demo_password";
-            
+
             match crypt.encrypt_file(file_path, password).await {
                 Ok(_) => {
                     encrypted_count += 1;
                 }
                 Err(e) => {
-                    self.status_message = format!("Error encrypting {}: {}", file_path.display(), e);
+                    self.status_message =
+                        format!("Error encrypting {}: {}", file_path.display(), e);
                     break;
                 }
             }
         }
-        
+
         self.selected_files.clear();
         let _ = self.refresh_files();
-        
+
         if encrypted_count > 0 {
             self.status_message = format!("Encrypted {} files", encrypted_count);
         }
@@ -290,8 +297,14 @@ impl TuiApp {
                 Vec::new()
             }
         } else {
-            self.selected_files.iter()
-                .filter(|path| path.extension().and_then(|e| e.to_str()).map(|ext| ext == "enc").unwrap_or(false))
+            self.selected_files
+                .iter()
+                .filter(|path| {
+                    path.extension()
+                        .and_then(|e| e.to_str())
+                        .map(|ext| ext == "enc")
+                        .unwrap_or(false)
+                })
                 .cloned()
                 .collect()
         };
@@ -304,21 +317,22 @@ impl TuiApp {
         let mut decrypted_count = 0;
         for file_path in &files_to_decrypt {
             let password = "demo_password";
-            
+
             match crypt.decrypt_file(file_path, password).await {
                 Ok(_) => {
                     decrypted_count += 1;
                 }
                 Err(e) => {
-                    self.status_message = format!("Error decrypting {}: {}", file_path.display(), e);
+                    self.status_message =
+                        format!("Error decrypting {}: {}", file_path.display(), e);
                     break;
                 }
             }
         }
-        
+
         self.selected_files.clear();
         let _ = self.refresh_files();
-        
+
         if decrypted_count > 0 {
             self.status_message = format!("Decrypted {} files", decrypted_count);
         }
@@ -332,26 +346,30 @@ fn render_ui(app: &TuiApp, frame: &mut Frame) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),      // Header
-            Constraint::Min(5),         // File list
-            Constraint::Length(3),      // Status
-            Constraint::Length(2),      // Help
+            Constraint::Length(3), // Header
+            Constraint::Min(5),    // File list
+            Constraint::Length(3), // Status
+            Constraint::Length(2), // Help
         ])
         .split(frame.size());
 
     // Header
-    let header = Paragraph::new(format!("CargoCrypt File Browser - {}", app.current_path.display()))
-        .style(Style::default().fg(Color::Cyan))
-        .block(Block::default().borders(Borders::ALL).title("Directory"));
+    let header = Paragraph::new(format!(
+        "CargoCrypt File Browser - {}",
+        app.current_path.display()
+    ))
+    .style(Style::default().fg(Color::Cyan))
+    .block(Block::default().borders(Borders::ALL).title("Directory"));
     frame.render_widget(header, chunks[0]);
 
     // File list
-    let items: Vec<ListItem> = app.files
+    let items: Vec<ListItem> = app
+        .files
         .iter()
         .enumerate()
         .map(|(i, file)| {
             let mut indicators = Vec::new();
-            
+
             if file.is_directory {
                 indicators.push("[DIR]");
             }
@@ -361,13 +379,13 @@ fn render_ui(app: &TuiApp, frame: &mut Frame) {
             if file.is_selected {
                 indicators.push("[SEL]");
             }
-            
+
             let indicator_str = if indicators.is_empty() {
                 String::new()
             } else {
                 format!(" {}", indicators.join(" "))
             };
-            
+
             let style = if i == app.selected_index {
                 Style::default().bg(Color::Blue).fg(Color::White)
             } else if file.is_selected {
@@ -375,17 +393,17 @@ fn render_ui(app: &TuiApp, frame: &mut Frame) {
             } else {
                 Style::default().fg(Color::White)
             };
-            
+
             let content = format!("{}{}", file.name, indicator_str);
             ListItem::new(Line::from(Span::styled(content, style)))
         })
         .collect();
-    
+
     let mut list_state = app.list_state.clone();
     let file_list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Files"))
         .highlight_style(Style::default().bg(Color::Blue));
-    
+
     frame.render_stateful_widget(file_list, chunks[1], &mut list_state);
 
     // Status
@@ -420,7 +438,7 @@ pub async fn run_simple_tui(crypt: Arc<CargoCrypt>) -> CryptoResult<()> {
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 app.handle_key(key.code, &crypt).await?;
-                
+
                 if app.should_quit {
                     break;
                 }

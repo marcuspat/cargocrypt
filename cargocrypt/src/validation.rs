@@ -4,9 +4,9 @@
 //! configuration values, and cryptographic parameters to ensure system stability.
 
 use crate::error::{CargoCryptError, CryptoResult};
-use std::path::{Path, PathBuf};
 use regex::Regex;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Validation result with detailed error information
 #[derive(Debug, Clone)]
@@ -28,9 +28,9 @@ pub struct ValidationError {
 /// Severity levels for validation errors
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationSeverity {
-    Critical,  // Will prevent operation
-    Warning,   // Should be addressed but won't block
-    Info,      // Informational only
+    Critical, // Will prevent operation
+    Warning,  // Should be addressed but won't block
+    Info,     // Informational only
 }
 
 impl ValidationResult {
@@ -49,13 +49,19 @@ impl ValidationResult {
             severity: severity.clone(),
             suggestion: None,
         });
-        
+
         if severity == ValidationSeverity::Critical {
             self.is_valid = false;
         }
     }
 
-    pub fn add_error_with_suggestion(&mut self, field: &str, message: &str, severity: ValidationSeverity, suggestion: &str) {
+    pub fn add_error_with_suggestion(
+        &mut self,
+        field: &str,
+        message: &str,
+        severity: ValidationSeverity,
+        suggestion: &str,
+    ) {
         let is_critical = severity == ValidationSeverity::Critical;
         self.errors.push(ValidationError {
             field: field.to_string(),
@@ -63,7 +69,7 @@ impl ValidationResult {
             severity,
             suggestion: Some(suggestion.to_string()),
         });
-        
+
         if is_critical {
             self.is_valid = false;
         }
@@ -74,7 +80,9 @@ impl ValidationResult {
     }
 
     pub fn has_critical_errors(&self) -> bool {
-        self.errors.iter().any(|e| e.severity == ValidationSeverity::Critical)
+        self.errors
+            .iter()
+            .any(|e| e.severity == ValidationSeverity::Critical)
     }
 }
 
@@ -106,16 +114,20 @@ impl InputValidator {
 
         // Check for empty path
         if path_str.is_empty() {
-            result.add_error("path", "File path cannot be empty", ValidationSeverity::Critical);
+            result.add_error(
+                "path",
+                "File path cannot be empty",
+                ValidationSeverity::Critical,
+            );
             return result;
         }
 
         // Check for path traversal attempts
         if path_str.contains("..") {
             result.add_error(
-                "path", 
-                "Path traversal detected (..)", 
-                ValidationSeverity::Critical
+                "path",
+                "Path traversal detected (..)",
+                ValidationSeverity::Critical,
             );
         }
 
@@ -124,7 +136,7 @@ impl InputValidator {
             result.add_error(
                 "path",
                 "Path contains invalid characters",
-                ValidationSeverity::Critical
+                ValidationSeverity::Critical,
             );
         }
 
@@ -133,7 +145,7 @@ impl InputValidator {
             result.add_error(
                 "path",
                 "Path too long (max 4096 characters)",
-                ValidationSeverity::Critical
+                ValidationSeverity::Critical,
             );
         }
 
@@ -174,17 +186,20 @@ impl InputValidator {
                 "password",
                 "Password must be at least 8 characters long",
                 ValidationSeverity::Critical,
-                "Use a longer password with mixed case, numbers, and symbols"
+                "Use a longer password with mixed case, numbers, and symbols",
             );
         }
 
         // Check for common weak passwords
         let weak_passwords = ["password", "12345678", "qwerty123", "admin123"];
-        if weak_passwords.iter().any(|&weak| password.to_lowercase().contains(weak)) {
+        if weak_passwords
+            .iter()
+            .any(|&weak| password.to_lowercase().contains(weak))
+        {
             result.add_error(
                 "password",
                 "Password appears to contain common weak patterns",
-                ValidationSeverity::Warning
+                ValidationSeverity::Warning,
             );
         }
 
@@ -203,7 +218,7 @@ impl InputValidator {
             0..=1 => result.add_error(
                 "password",
                 "Password is very weak",
-                ValidationSeverity::Warning
+                ValidationSeverity::Warning,
             ),
             2 => result.add_warning("Password is weak - consider adding more character types"),
             3 => result.add_warning("Password is moderate strength"),
@@ -223,7 +238,7 @@ impl InputValidator {
             result.add_error(
                 "config_key",
                 "Configuration key contains invalid characters",
-                ValidationSeverity::Critical
+                ValidationSeverity::Critical,
             );
         }
 
@@ -236,35 +251,55 @@ impl InputValidator {
                             key,
                             "Memory cost too low for security",
                             ValidationSeverity::Critical,
-                            "Use at least 1024 KiB (1 MB) for security"
+                            "Use at least 1024 KiB (1 MB) for security",
                         );
                     } else if cost > 1048576 {
                         result.add_error(
                             key,
                             "Memory cost extremely high - may cause system issues",
-                            ValidationSeverity::Warning
+                            ValidationSeverity::Warning,
                         );
                     }
                 } else {
-                    result.add_error(key, "Memory cost must be a valid number", ValidationSeverity::Critical);
+                    result.add_error(
+                        key,
+                        "Memory cost must be a valid number",
+                        ValidationSeverity::Critical,
+                    );
                 }
             }
             "time_cost" => {
                 if let Ok(cost) = value.parse::<u32>() {
                     if cost < 1 {
-                        result.add_error(key, "Time cost must be at least 1", ValidationSeverity::Critical);
+                        result.add_error(
+                            key,
+                            "Time cost must be at least 1",
+                            ValidationSeverity::Critical,
+                        );
                     } else if cost > 100 {
-                        result.add_error(key, "Time cost very high - operations will be slow", ValidationSeverity::Warning);
+                        result.add_error(
+                            key,
+                            "Time cost very high - operations will be slow",
+                            ValidationSeverity::Warning,
+                        );
                     }
                 } else {
-                    result.add_error(key, "Time cost must be a valid number", ValidationSeverity::Critical);
+                    result.add_error(
+                        key,
+                        "Time cost must be a valid number",
+                        ValidationSeverity::Critical,
+                    );
                 }
             }
             "parallelism" => {
                 if let Ok(par) = value.parse::<u32>() {
                     let cpu_count = num_cpus::get() as u32;
                     if par < 1 {
-                        result.add_error(key, "Parallelism must be at least 1", ValidationSeverity::Critical);
+                        result.add_error(
+                            key,
+                            "Parallelism must be at least 1",
+                            ValidationSeverity::Critical,
+                        );
                     } else if par > cpu_count * 2 {
                         result.add_warning(&format!(
                             "Parallelism ({}) higher than recommended ({})",
@@ -272,13 +307,21 @@ impl InputValidator {
                         ));
                     }
                 } else {
-                    result.add_error(key, "Parallelism must be a valid number", ValidationSeverity::Critical);
+                    result.add_error(
+                        key,
+                        "Parallelism must be a valid number",
+                        ValidationSeverity::Critical,
+                    );
                 }
             }
             _ => {
                 // Generic validation for unknown keys
                 if value.len() > 1000 {
-                    result.add_error(key, "Configuration value too long", ValidationSeverity::Warning);
+                    result.add_error(
+                        key,
+                        "Configuration value too long",
+                        ValidationSeverity::Warning,
+                    );
                 }
             }
         }
@@ -296,7 +339,7 @@ impl InputValidator {
             result.add_error(
                 "file_size",
                 "File too large for encryption (>100MB)",
-                ValidationSeverity::Critical
+                ValidationSeverity::Critical,
             );
         }
 
@@ -314,7 +357,10 @@ impl InputValidator {
         // Check filename for suspicious patterns
         let filename_lower = filename.to_lowercase();
         let suspicious_names = ["password", "secret", "key", "token", "credential"];
-        if suspicious_names.iter().any(|&pattern| filename_lower.contains(pattern)) {
+        if suspicious_names
+            .iter()
+            .any(|&pattern| filename_lower.contains(pattern))
+        {
             result.add_warning("Filename suggests this file may contain sensitive data");
         }
 
@@ -327,10 +373,16 @@ impl InputValidator {
         let patterns = [
             (r"(?i)password\s*[=:]\s*[\w@#$%^&*!]+", "Potential password"),
             (r"(?i)api[_-]?key\s*[=:]\s*[\w-]+", "Potential API key"),
-            (r"(?i)secret[_-]?key\s*[=:]\s*[\w-]+", "Potential secret key"),
+            (
+                r"(?i)secret[_-]?key\s*[=:]\s*[\w-]+",
+                "Potential secret key",
+            ),
             (r"AKIA[0-9A-Z]{16}", "Potential AWS access key"),
             (r"sk_live_[0-9a-zA-Z]{24,}", "Potential Stripe secret key"),
-            (r"ghp_[0-9a-zA-Z]{36}", "Potential GitHub personal access token"),
+            (
+                r"ghp_[0-9a-zA-Z]{36}",
+                "Potential GitHub personal access token",
+            ),
         ];
 
         for (pattern, description) in &patterns {
@@ -342,7 +394,8 @@ impl InputValidator {
         }
 
         // Check for high entropy strings
-        for line in content.lines().take(100) { // Check first 100 lines only
+        for line in content.lines().take(100) {
+            // Check first 100 lines only
             if line.len() > 20 && self.has_high_entropy(line) {
                 result.add_warning("High entropy string detected - may be encoded secret");
                 break; // Only warn once
@@ -396,21 +449,24 @@ pub fn validate_and_sanitize_path(path: &str) -> CryptoResult<PathBuf> {
     let validator = InputValidator::new();
     let sanitized = sanitize_input(path);
     let path_buf = PathBuf::from(&sanitized);
-    
+
     let validation = validator.validate_file_path(&path_buf);
     if !validation.is_valid {
-        let error_messages: Vec<String> = validation.errors
+        let error_messages: Vec<String> = validation
+            .errors
             .iter()
             .filter(|e| e.severity == ValidationSeverity::Critical)
             .map(|e| e.message.clone())
             .collect();
-        
+
         return Err(CargoCryptError::Config {
             message: format!("Invalid file path: {}", error_messages.join(", ")),
-            suggestion: Some("Please provide a valid file path without dangerous characters".to_string()),
+            suggestion: Some(
+                "Please provide a valid file path without dangerous characters".to_string(),
+            ),
         });
     }
-    
+
     Ok(path_buf)
 }
 

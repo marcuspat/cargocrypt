@@ -3,18 +3,21 @@
 //! This module provides the main CargoCrypt struct and configuration types
 //! for zero-config cryptographic operations.
 
+use crate::crypto::{CryptoEngine, MemorySecretStore, PerformanceProfile, SecretStore};
 use crate::error::{CargoCryptError, CryptoResult};
-use crate::crypto::{CryptoEngine, PerformanceProfile, MemorySecretStore, SecretStore};
-use crate::resilience::{CircuitBreaker, RetryPolicy, GracefulDegradation, HealthStatus};
+use crate::monitoring::{
+    CryptoOperation, CryptoOperationType, FileOperation, FileOperationType, MonitoringConfig,
+    MonitoringManager, PerformanceTracker,
+};
+use crate::resilience::{CircuitBreaker, GracefulDegradation, HealthStatus, RetryPolicy};
 use crate::validation::{InputValidator, ValidationResult};
-use crate::monitoring::{MonitoringManager, MonitoringConfig, CryptoOperation, CryptoOperationType, FileOperation, FileOperationType, PerformanceTracker};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
+use tracing::{error, info, warn};
 use zeroize::{Zeroize, ZeroizeOnDrop};
-use tracing::{info, warn, error};
 
 /// Secure bytes wrapper that zeroizes memory on drop
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
@@ -29,22 +32,22 @@ impl SecretBytes {
             inner: s.as_bytes().to_vec(),
         }
     }
-    
+
     /// Get the length
     pub fn len(&self) -> usize {
         self.inner.len()
     }
-    
+
     /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
-    
+
     /// Convert to string lossy
     pub fn to_string_lossy(&self) -> String {
         String::from_utf8_lossy(&self.inner).to_string()
     }
-    
+
     /// Get a reference to the inner bytes
     pub fn as_bytes(&self) -> &[u8] {
         &self.inner
@@ -181,23 +184,39 @@ pub struct ResilienceManager {
 impl ResilienceManager {
     pub fn new() -> Self {
         let degradation = Arc::new(GracefulDegradation::new());
-        
+
         // Initialize with default features enabled
         let degradation_clone = Arc::clone(&degradation);
         tokio::spawn(async move {
-            degradation_clone.register_feature("file_operations", true).await;
+            degradation_clone
+                .register_feature("file_operations", true)
+                .await;
             degradation_clone.register_feature("encryption", true).await;
             degradation_clone.register_feature("tui", true).await;
-            degradation_clone.register_feature("git_integration", true).await;
-            
+            degradation_clone
+                .register_feature("git_integration", true)
+                .await;
+
             // Register circuit breakers
-            degradation_clone.register_circuit_breaker("file_ops", 3, Duration::from_secs(30)).await;
-            degradation_clone.register_circuit_breaker("crypto_ops", 5, Duration::from_secs(60)).await;
+            degradation_clone
+                .register_circuit_breaker("file_ops", 3, Duration::from_secs(30))
+                .await;
+            degradation_clone
+                .register_circuit_breaker("crypto_ops", 5, Duration::from_secs(60))
+                .await;
         });
-        
+
         Self {
-            file_ops_breaker: CircuitBreaker::new("file_operations".to_string(), 3, Duration::from_secs(30)),
-            crypto_breaker: CircuitBreaker::new("crypto_operations".to_string(), 5, Duration::from_secs(60)),
+            file_ops_breaker: CircuitBreaker::new(
+                "file_operations".to_string(),
+                3,
+                Duration::from_secs(30),
+            ),
+            crypto_breaker: CircuitBreaker::new(
+                "crypto_operations".to_string(),
+                5,
+                Duration::from_secs(60),
+            ),
             retry_policy: RetryPolicy::new(3, Duration::from_millis(500))
                 .with_max_delay(Duration::from_secs(5))
                 .with_backoff_multiplier(2.0),
@@ -205,31 +224,39 @@ impl ResilienceManager {
             validator: InputValidator::new(),
         }
     }
-    
+
     /// Create a new ResilienceManager with custom configuration
     pub fn with_config(config: ResilienceConfig) -> Self {
         let degradation = Arc::new(GracefulDegradation::new());
-        
+
         // Initialize with configuration-based settings
         let degradation_clone = Arc::clone(&degradation);
         tokio::spawn(async move {
-            degradation_clone.register_feature("file_operations", true).await;
+            degradation_clone
+                .register_feature("file_operations", true)
+                .await;
             degradation_clone.register_feature("encryption", true).await;
             degradation_clone.register_feature("tui", true).await;
-            degradation_clone.register_feature("git_integration", true).await;
-            
+            degradation_clone
+                .register_feature("git_integration", true)
+                .await;
+
             // Register circuit breakers with configured settings
             if config.circuit_breaker_enabled {
                 let timeout = Duration::from_secs(config.circuit_timeout_secs);
-                degradation_clone.register_circuit_breaker("file_ops", config.failure_threshold, timeout).await;
-                degradation_clone.register_circuit_breaker("crypto_ops", config.failure_threshold, timeout).await;
+                degradation_clone
+                    .register_circuit_breaker("file_ops", config.failure_threshold, timeout)
+                    .await;
+                degradation_clone
+                    .register_circuit_breaker("crypto_ops", config.failure_threshold, timeout)
+                    .await;
             }
         });
-        
+
         let retry_policy = if config.retry_enabled {
             RetryPolicy::new(
                 config.max_retries,
-                Duration::from_millis(config.retry_base_delay_ms)
+                Duration::from_millis(config.retry_base_delay_ms),
             )
             .with_max_delay(Duration::from_secs(30))
             .with_backoff_multiplier(2.0)
@@ -237,24 +264,24 @@ impl ResilienceManager {
             // Disabled retry policy (1 attempt only)
             RetryPolicy::new(1, Duration::from_millis(0))
         };
-        
+
         Self {
             file_ops_breaker: CircuitBreaker::new(
                 "file_operations".to_string(),
                 config.failure_threshold,
-                Duration::from_secs(config.circuit_timeout_secs)
+                Duration::from_secs(config.circuit_timeout_secs),
             ),
             crypto_breaker: CircuitBreaker::new(
                 "crypto_operations".to_string(),
                 config.failure_threshold,
-                Duration::from_secs(config.circuit_timeout_secs)
+                Duration::from_secs(config.circuit_timeout_secs),
             ),
             retry_policy,
             degradation,
             validator: InputValidator::new(),
         }
     }
-    
+
     /// Execute a file operation with circuit breaker and retry protection
     pub async fn execute_file_operation<F, Fut, T>(&self, mut operation: F) -> CryptoResult<T>
     where
@@ -269,10 +296,10 @@ impl ResilienceManager {
                 suggestion: Some("System is in degraded mode, please try again later".to_string()),
             });
         }
-        
+
         // For circuit breaker, we need to wrap the async operation
         let result = operation().await;
-        
+
         match result {
             Ok(value) => Ok(value),
             Err(error) => {
@@ -286,7 +313,7 @@ impl ResilienceManager {
             }
         }
     }
-    
+
     /// Execute a crypto operation with circuit breaker protection
     pub async fn execute_crypto_operation<F, T>(&self, operation: F) -> CryptoResult<T>
     where
@@ -300,7 +327,7 @@ impl ResilienceManager {
                 suggestion: Some("System is in degraded mode, please try again later".to_string()),
             });
         }
-        
+
         match self.crypto_breaker.execute(|| operation()).await {
             Ok(result) => Ok(result),
             Err(_breaker_error) => {
@@ -312,12 +339,12 @@ impl ResilienceManager {
             }
         }
     }
-    
+
     /// Perform system health check and update feature flags
     pub async fn health_check(&self) -> HealthStatus {
         self.degradation.health_check().await
     }
-    
+
     /// Validate and sanitize user input
     pub fn validate_input(&self, input_type: &str, value: &str) -> ValidationResult {
         match input_type {
@@ -332,7 +359,11 @@ impl ResilienceManager {
                     self.validator.validate_config_value(key, val)
                 } else {
                     let mut result = ValidationResult::new();
-                    result.add_error("config", "Invalid config format, expected key=value", crate::validation::ValidationSeverity::Critical);
+                    result.add_error(
+                        "config",
+                        "Invalid config format, expected key=value",
+                        crate::validation::ValidationSeverity::Critical,
+                    );
                     result
                 }
             }
@@ -387,12 +418,12 @@ impl CargoCryptBuilder {
         let secret_store = Arc::new(MemorySecretStore::new()) as Arc<dyn SecretStore>;
 
         let monitoring = Arc::new(MonitoringManager::new(config.monitoring.clone()));
-        
+
         // Initialize monitoring logging
         if let Err(e) = monitoring.initialize_logging() {
             warn!("Failed to initialize monitoring logging: {}", e);
         }
-        
+
         Ok(CargoCrypt {
             engine,
             config: Arc::new(RwLock::new(config)),
@@ -414,21 +445,24 @@ impl CargoCrypt {
     pub async fn new() -> CryptoResult<Self> {
         Self::builder().build().await
     }
-    
+
     /// Get the resilience manager for direct access to error handling systems
     pub fn resilience(&self) -> &ResilienceManager {
         &self.resilience
     }
-    
+
     /// Perform a comprehensive system health check
     pub async fn health_check(&self) -> HealthStatus {
         self.resilience.health_check().await
     }
-    
+
     /// Check if the system is operating in degraded mode
     pub async fn is_degraded(&self) -> bool {
         let health = self.health_check().await;
-        matches!(health.overall_health, crate::resilience::HealthLevel::Degraded | crate::resilience::HealthLevel::Critical)
+        matches!(
+            health.overall_health,
+            crate::resilience::HealthLevel::Degraded | crate::resilience::HealthLevel::Critical
+        )
     }
 
     /// Get the current configuration
@@ -440,7 +474,7 @@ impl CargoCrypt {
     pub fn crypto(&self) -> &CryptoEngine {
         &self.engine
     }
-    
+
     /// Get the monitoring manager for accessing metrics and performance data
     pub fn monitoring(&self) -> &MonitoringManager {
         &self.monitoring
@@ -450,66 +484,76 @@ impl CargoCrypt {
     pub async fn init_project() -> CryptoResult<()> {
         let project_root = crate::utils::find_project_root()?;
         let config_dir = project_root.join(".cargocrypt");
-        
+
         if !config_dir.exists() {
             tokio::fs::create_dir_all(&config_dir).await?;
         }
-        
+
         // Create default configuration file with resilience settings
         let config_file = config_dir.join("config.toml");
         if !config_file.exists() {
             let default_config = CryptoConfig::default();
-            let config_toml = toml::to_string_pretty(&default_config)
-                .map_err(|e| CargoCryptError::Serialization {
+            let config_toml = toml::to_string_pretty(&default_config).map_err(|e| {
+                CargoCryptError::Serialization {
                     message: format!("Failed to serialize default config: {}", e),
                     source: Box::new(e),
-                })?;
-            
+                }
+            })?;
+
             tokio::fs::write(&config_file, config_toml).await?;
-            info!("Created default configuration at: {}", config_file.display());
+            info!(
+                "Created default configuration at: {}",
+                config_file.display()
+            );
         }
-        
+
         Ok(())
     }
 
     /// Encrypt a file with the given password
-    pub async fn encrypt_file<P: AsRef<Path>>(&self, path: P, password: &str) -> CryptoResult<PathBuf> {
-        use crate::crypto::{PlaintextSecret, EncryptionOptions};
-        
+    pub async fn encrypt_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        password: &str,
+    ) -> CryptoResult<PathBuf> {
+        use crate::crypto::{EncryptionOptions, PlaintextSecret};
+
         let path = path.as_ref().to_path_buf();
         let path_str = path.to_string_lossy().to_string();
-        
+
         // Comprehensive input validation
         let password_validation = self.resilience.validate_input("password", password);
         if !password_validation.is_valid {
-            let error_messages: Vec<String> = password_validation.errors
+            let error_messages: Vec<String> = password_validation
+                .errors
                 .iter()
                 .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
                 .map(|e| e.message.clone())
                 .collect();
-            
+
             return Err(CargoCryptError::Validation {
                 message: "Password validation failed".to_string(),
                 errors: error_messages,
                 warnings: password_validation.warnings,
             });
         }
-        
+
         let path_validation = self.resilience.validate_input("file_path", &path_str);
         if !path_validation.is_valid {
-            let error_messages: Vec<String> = path_validation.errors
+            let error_messages: Vec<String> = path_validation
+                .errors
                 .iter()
                 .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
                 .map(|e| e.message.clone())
                 .collect();
-            
+
             return Err(CargoCryptError::Validation {
                 message: "File path validation failed".to_string(),
                 errors: error_messages,
                 warnings: path_validation.warnings,
             });
         }
-        
+
         // Display validation warnings if any
         for warning in &password_validation.warnings {
             warn!("Password validation warning: {}", warning);
@@ -517,137 +561,178 @@ impl CargoCrypt {
         for warning in &path_validation.warnings {
             warn!("Path validation warning: {}", warning);
         }
-        
+
         let config = self.config.read().await;
-        
+
         // Execute file operations with resilience protection
         let path_clone = path.clone();
         let file_content = {
             let path_str_clone = path_str.clone();
             let path_for_read = path.clone();
-            self.resilience.execute_file_operation(move || {
-                let path_str = path_str_clone.clone();
-                let path_clone = path_for_read.clone();
-                async move {
-                    info!("Reading file for encryption: {}", path_str);
-                    let content = tokio::fs::read(&path_clone).await.map_err(|e| CargoCryptError::from(e))?;
-            
-            // Validate file content
-            let filename = path_clone.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
-            let validator = InputValidator::new();
-            let content_validation = validator.validate_file_content(&content, filename);
-            
-            for warning in &content_validation.warnings {
-                warn!("File content warning: {}", warning);
-            }
-            
-                    Ok(content)
-                }
-            }).await?
+            self.resilience
+                .execute_file_operation(move || {
+                    let path_str = path_str_clone.clone();
+                    let path_clone = path_for_read.clone();
+                    async move {
+                        info!("Reading file for encryption: {}", path_str);
+                        let content = tokio::fs::read(&path_clone)
+                            .await
+                            .map_err(|e| CargoCryptError::from(e))?;
+
+                        // Validate file content
+                        let filename = path_clone
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown");
+                        let validator = InputValidator::new();
+                        let content_validation =
+                            validator.validate_file_content(&content, filename);
+
+                        for warning in &content_validation.warnings {
+                            warn!("File content warning: {}", warning);
+                        }
+
+                        Ok(content)
+                    }
+                })
+                .await?
         };
-        
+
         let plaintext = PlaintextSecret::new(file_content);
-        
+
         // Execute crypto operations with circuit breaker protection
         let password_str = password.to_string();
         let engine_clone = Arc::clone(&self.engine);
         let encrypted = {
             info!("Encrypting file content");
-            self.engine.encrypt(
-                plaintext, 
-                &password_str, 
-                crate::crypto::EncryptionOptions::default()
-            ).await.map_err(|e| CargoCryptError::from(e))?
+            self.engine
+                .encrypt(
+                    plaintext,
+                    &password_str,
+                    crate::crypto::EncryptionOptions::default(),
+                )
+                .await
+                .map_err(|e| CargoCryptError::from(e))?
         };
-        
+
         // Create encrypted file path
-        let encrypted_path = path.with_extension(format!("{}.enc", 
-            path.extension().and_then(|ext| ext.to_str()).unwrap_or("dat")));
-        
+        let encrypted_path = path.with_extension(format!(
+            "{}.enc",
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("dat")
+        ));
+
         // Write encrypted content with resilience protection
         let encrypted_path_clone = encrypted_path.clone();
         let atomic_ops = config.file_ops.atomic_operations;
         {
             let encrypted_for_write = encrypted.clone();
             let path_for_write = encrypted_path_clone.clone();
-            self.resilience.execute_file_operation(move || {
-                let encrypted_bytes_result = encrypted_for_write.clone();
-                let encrypted_path_clone = path_for_write.clone();
-                async move {
-                    info!("Writing encrypted file: {}", encrypted_path_clone.display());
-                    let encrypted_bytes = encrypted_bytes_result.to_bytes().map_err(|e| CargoCryptError::from(e))?;
-                    
-                    // Atomic operation: write to temp file first, then move
-                    if atomic_ops {
-                        let temp_path = encrypted_path_clone.with_extension("tmp");
-                        tokio::fs::write(&temp_path, &encrypted_bytes).await.map_err(|e| CargoCryptError::from(e))?;
-                        tokio::fs::rename(&temp_path, &encrypted_path_clone).await.map_err(|e| CargoCryptError::from(e))?;
-                    } else {
-                        tokio::fs::write(&encrypted_path_clone, encrypted_bytes).await.map_err(|e| CargoCryptError::from(e))?;
+            self.resilience
+                .execute_file_operation(move || {
+                    let encrypted_bytes_result = encrypted_for_write.clone();
+                    let encrypted_path_clone = path_for_write.clone();
+                    async move {
+                        info!("Writing encrypted file: {}", encrypted_path_clone.display());
+                        let encrypted_bytes = encrypted_bytes_result
+                            .to_bytes()
+                            .map_err(|e| CargoCryptError::from(e))?;
+
+                        // Atomic operation: write to temp file first, then move
+                        if atomic_ops {
+                            let temp_path = encrypted_path_clone.with_extension("tmp");
+                            tokio::fs::write(&temp_path, &encrypted_bytes)
+                                .await
+                                .map_err(|e| CargoCryptError::from(e))?;
+                            tokio::fs::rename(&temp_path, &encrypted_path_clone)
+                                .await
+                                .map_err(|e| CargoCryptError::from(e))?;
+                        } else {
+                            tokio::fs::write(&encrypted_path_clone, encrypted_bytes)
+                                .await
+                                .map_err(|e| CargoCryptError::from(e))?;
+                        }
+
+                        Ok(())
                     }
-                    
-                    Ok(())
-                }
-            }).await?
+                })
+                .await?
         };
-        
+
         // Optionally backup original with resilience protection
         if config.file_ops.backup_originals {
             let path_for_backup = path.clone();
-            self.resilience.execute_file_operation(move || {
-                let path_clone = path_for_backup.clone();
-                async move {
-                    let backup_path = path_clone.with_extension(format!("{}.backup", 
-                        path_clone.extension().and_then(|ext| ext.to_str()).unwrap_or("dat")));
-                    info!("Creating backup: {}", backup_path.display());
-                    tokio::fs::copy(&path_clone, backup_path).await.map_err(|e| CargoCryptError::from(e))?;
-                    Ok(())
-                }
-            }).await?;
+            self.resilience
+                .execute_file_operation(move || {
+                    let path_clone = path_for_backup.clone();
+                    async move {
+                        let backup_path = path_clone.with_extension(format!(
+                            "{}.backup",
+                            path_clone
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or("dat")
+                        ));
+                        info!("Creating backup: {}", backup_path.display());
+                        tokio::fs::copy(&path_clone, backup_path)
+                            .await
+                            .map_err(|e| CargoCryptError::from(e))?;
+                        Ok(())
+                    }
+                })
+                .await?;
         }
-        
-        info!("File encryption completed successfully: {}", encrypted_path.display());
+
+        info!(
+            "File encryption completed successfully: {}",
+            encrypted_path.display()
+        );
         Ok(encrypted_path)
     }
 
     /// Decrypt a file with the given password
-    pub async fn decrypt_file<P: AsRef<Path>>(&self, path: P, password: &str) -> CryptoResult<PathBuf> {
+    pub async fn decrypt_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        password: &str,
+    ) -> CryptoResult<PathBuf> {
         let path = path.as_ref();
         let path_str = path.to_string_lossy();
-        
+
         // Comprehensive input validation
         let password_validation = self.resilience.validate_input("password", password);
         if !password_validation.is_valid {
-            let error_messages: Vec<String> = password_validation.errors
+            let error_messages: Vec<String> = password_validation
+                .errors
                 .iter()
                 .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
                 .map(|e| e.message.clone())
                 .collect();
-            
+
             return Err(CargoCryptError::Validation {
                 message: "Password validation failed".to_string(),
                 errors: error_messages,
                 warnings: password_validation.warnings,
             });
         }
-        
+
         let path_validation = self.resilience.validate_input("file_path", &path_str);
         if !path_validation.is_valid {
-            let error_messages: Vec<String> = path_validation.errors
+            let error_messages: Vec<String> = path_validation
+                .errors
                 .iter()
                 .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
                 .map(|e| e.message.clone())
                 .collect();
-            
+
             return Err(CargoCryptError::Validation {
                 message: "File path validation failed".to_string(),
                 errors: error_messages,
                 warnings: path_validation.warnings,
             });
         }
-        
+
         // Display validation warnings if any
         for warning in &password_validation.warnings {
             warn!("Password validation warning: {}", warning);
@@ -655,51 +740,70 @@ impl CargoCrypt {
         for warning in &path_validation.warnings {
             warn!("Path validation warning: {}", warning);
         }
-        
+
         let config = self.config.read().await;
-        
+
         // Read encrypted content with resilience protection
-        let encrypted_bytes = self.resilience.execute_file_operation(|| async {
-            info!("Reading encrypted file: {}", path_str);
-            tokio::fs::read(path).await.map_err(|e| CargoCryptError::from(e))
-        }).await?;
-        
+        let encrypted_bytes = self
+            .resilience
+            .execute_file_operation(|| async {
+                info!("Reading encrypted file: {}", path_str);
+                tokio::fs::read(path)
+                    .await
+                    .map_err(|e| CargoCryptError::from(e))
+            })
+            .await?;
+
         // Parse encrypted data
         let encrypted = {
             info!("Parsing encrypted data");
-            crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes).map_err(|e| CargoCryptError::from(e))?
+            crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)
+                .map_err(|e| CargoCryptError::from(e))?
         };
-        
+
         // Decrypt using the crypto engine with circuit breaker protection
         let decrypted = {
             info!("Decrypting file content");
-            self.engine.decrypt(&encrypted, password).map_err(|e| CargoCryptError::from(e))?
+            self.engine
+                .decrypt(&encrypted, password)
+                .map_err(|e| CargoCryptError::from(e))?
         };
-        
+
         // Create decrypted file path (remove .enc extension)
         let decrypted_path = if path.extension().and_then(|ext| ext.to_str()) == Some("enc") {
             path.with_extension("")
         } else {
             path.with_extension("decrypted")
         };
-        
+
         // Write decrypted content with resilience protection
-        self.resilience.execute_file_operation(|| async {
-            info!("Writing decrypted file: {}", decrypted_path.display());
-            
-            // Atomic operation: write to temp file first, then move
-            if config.file_ops.atomic_operations {
-                let temp_path = decrypted_path.with_extension("tmp");
-                tokio::fs::write(&temp_path, decrypted.as_bytes()).await.map_err(|e| CargoCryptError::from(e))?;
-                tokio::fs::rename(&temp_path, &decrypted_path).await.map_err(|e| CargoCryptError::from(e))?;
-            } else {
-                tokio::fs::write(&decrypted_path, decrypted.as_bytes()).await.map_err(|e| CargoCryptError::from(e))?;
-            }
-            
-            Ok(())
-        }).await?;
-        
-        info!("File decryption completed successfully: {}", decrypted_path.display());
+        self.resilience
+            .execute_file_operation(|| async {
+                info!("Writing decrypted file: {}", decrypted_path.display());
+
+                // Atomic operation: write to temp file first, then move
+                if config.file_ops.atomic_operations {
+                    let temp_path = decrypted_path.with_extension("tmp");
+                    tokio::fs::write(&temp_path, decrypted.as_bytes())
+                        .await
+                        .map_err(|e| CargoCryptError::from(e))?;
+                    tokio::fs::rename(&temp_path, &decrypted_path)
+                        .await
+                        .map_err(|e| CargoCryptError::from(e))?;
+                } else {
+                    tokio::fs::write(&decrypted_path, decrypted.as_bytes())
+                        .await
+                        .map_err(|e| CargoCryptError::from(e))?;
+                }
+
+                Ok(())
+            })
+            .await?;
+
+        info!(
+            "File decryption completed successfully: {}",
+            decrypted_path.display()
+        );
         Ok(decrypted_path)
     }
 }
@@ -795,15 +899,15 @@ impl CryptoConfig {
         if self.key_params.memory_cost < 1024 {
             return Err(CargoCryptError::config_not_found());
         }
-        
+
         if self.key_params.time_cost < 1 {
             return Err(CargoCryptError::config_not_found());
         }
-        
+
         if self.key_params.parallelism < 1 {
             return Err(CargoCryptError::config_not_found());
         }
-        
+
         Ok(())
     }
 
@@ -815,7 +919,7 @@ impl CryptoConfig {
             PerformanceProfile::Secure,
         ]
     }
-    
+
     /// Update resilience configuration at runtime
     pub fn update_resilience_config(&mut self, config: ResilienceConfig) -> CryptoResult<()> {
         // Validate resilience configuration
@@ -825,14 +929,16 @@ impl CryptoConfig {
                 suggestion: Some("Set failure_threshold to at least 1".to_string()),
             });
         }
-        
+
         if config.max_retries > 10 {
             return Err(CargoCryptError::Config {
                 message: "Maximum retries too high (max 10)".to_string(),
-                suggestion: Some("Set max_retries to 10 or less to avoid excessive delays".to_string()),
+                suggestion: Some(
+                    "Set max_retries to 10 or less to avoid excessive delays".to_string(),
+                ),
             });
         }
-        
+
         info!("Updating resilience configuration: {:?}", config);
         self.resilience = config;
         Ok(())
