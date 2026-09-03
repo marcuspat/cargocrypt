@@ -255,8 +255,8 @@ impl fmt::Debug for EncryptedSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EncryptedSecret")
             .field("ciphertext_len", &self.ciphertext.len())
-            .field("nonce", &hex::encode(&self.nonce))
-            .field("salt", &hex::encode(&self.salt))
+            .field("nonce", &hex::encode(self.nonce))
+            .field("salt", &hex::encode(self.salt))
             .field("metadata", &self.metadata)
             .finish()
     }

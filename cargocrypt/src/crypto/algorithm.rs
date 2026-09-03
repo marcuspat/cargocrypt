@@ -8,7 +8,7 @@
 use std::fmt;
 
 /// Supported cryptographic algorithms with security properties
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Algorithm {
     /// ChaCha20-Poly1305 authenticated encryption
     ///
@@ -18,6 +18,7 @@ pub enum Algorithm {
     /// - No known cache-timing vulnerabilities
     /// - Post-quantum secure (against known algorithms)
     /// - Stream cipher with polynomial authenticator
+    #[default]
     ChaCha20Poly1305,
 
     /// AES-256-GCM authenticated encryption (future implementation)
@@ -139,13 +140,6 @@ impl fmt::Display for Algorithm {
             Algorithm::ChaCha20Poly1305 => write!(f, "ChaCha20-Poly1305"),
             Algorithm::Aes256Gcm => write!(f, "AES-256-GCM"),
         }
-    }
-}
-
-impl Default for Algorithm {
-    fn default() -> Self {
-        // ChaCha20-Poly1305 is preferred due to better side-channel resistance
-        Algorithm::ChaCha20Poly1305
     }
 }
 

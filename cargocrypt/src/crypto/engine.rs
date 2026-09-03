@@ -39,7 +39,7 @@ pub struct CryptoEngine {
 
 /// Feature flags for crypto engine capabilities
 #[derive(Debug, Clone)]
-struct CryptoFeatures {
+pub struct CryptoFeatures {
     encryption: bool,
     decryption: bool,
     key_derivation: bool,
@@ -48,22 +48,17 @@ struct CryptoFeatures {
 }
 
 /// Performance profiles for different use cases
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum PerformanceProfile {
     /// Fast operations, lower security (development/testing)
     Fast,
     /// Balanced security and performance (default)
+    #[default]
     Balanced,
     /// High security, slower operations (production sensitive data)
     Secure,
     /// Maximum security, slowest operations (highly sensitive data)
     Paranoid,
-}
-
-impl Default for PerformanceProfile {
-    fn default() -> Self {
-        Self::Balanced
-    }
 }
 
 impl PerformanceProfile {
@@ -106,7 +101,7 @@ impl PerformanceProfile {
 }
 
 /// Encryption options
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EncryptionOptions {
     /// Secret metadata
     pub metadata: Option<SecretMetadata>,
@@ -114,16 +109,6 @@ pub struct EncryptionOptions {
     pub performance_profile: Option<PerformanceProfile>,
     /// Custom salt (if None, random salt is generated)
     pub salt: Option<[u8; defaults::SALT_LENGTH]>,
-}
-
-impl Default for EncryptionOptions {
-    fn default() -> Self {
-        Self {
-            metadata: None,
-            performance_profile: None,
-            salt: None,
-        }
-    }
 }
 
 impl EncryptionOptions {
@@ -358,9 +343,9 @@ impl CryptoEngine {
     ) -> CryptoResult<EncryptedSecret> {
         // Execute with circuit breaker protection
         let circuit_breaker = Arc::clone(&self.circuit_breaker);
-        let retry_policy = Arc::clone(&self.retry_policy);
+        let _retry_policy = Arc::clone(&self.retry_policy);
         let performance_profile = self.performance_profile;
-        let validator = self.validator.clone();
+        let _validator = self.validator.clone();
 
         // Circuit breaker execution
         let result = circuit_breaker
@@ -540,12 +525,12 @@ impl CryptoEngine {
             .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
             .map_err(CryptoError::from)?;
 
-        let _key = Key::from_slice(&key_bytes).clone();
+        let _key = *Key::from_slice(&key_bytes);
 
         // Zeroize intermediate data
         key_bytes.zeroize();
 
-        Ok(DerivedKey::from_password_with_salt(password, salt)?)
+        DerivedKey::from_password_with_salt(password, salt)
     }
 
     /// Derive a key with a specific salt

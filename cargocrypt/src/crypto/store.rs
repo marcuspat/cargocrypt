@@ -1,6 +1,6 @@
 //! Secret storage traits and implementations
 
-use crate::crypto::{EncryptedSecret, PlaintextSecret};
+use crate::crypto::EncryptedSecret;
 use crate::error::CryptoResult;
 use async_trait::async_trait;
 use std::collections::HashMap;

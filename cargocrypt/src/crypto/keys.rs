@@ -31,7 +31,7 @@ impl DerivedKey {
             .hash_password_into(password.as_bytes(), &params.salt, &mut key_bytes)
             .map_err(CryptoError::from)?;
 
-        let key = Key::from_slice(&key_bytes).clone();
+        let key = *Key::from_slice(&key_bytes);
 
         // Zeroize intermediate data
         key_bytes.zeroize();
@@ -132,7 +132,7 @@ impl DerivedKey {
             )));
         }
 
-        let key = Key::from_slice(&bytes[..defaults::KEY_LENGTH]).clone();
+        let key = *Key::from_slice(&bytes[..defaults::KEY_LENGTH]);
         let mut salt = [0u8; defaults::SALT_LENGTH];
         salt.copy_from_slice(&bytes[defaults::KEY_LENGTH..]);
 
@@ -144,7 +144,7 @@ impl std::fmt::Debug for DerivedKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DerivedKey")
             .field("key", &"[REDACTED]")
-            .field("salt", &hex::encode(&self.salt))
+            .field("salt", &hex::encode(self.salt))
             .finish()
     }
 }
