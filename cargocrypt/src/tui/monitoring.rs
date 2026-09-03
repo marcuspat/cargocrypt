@@ -3,7 +3,7 @@
 //! Real-time monitoring interface showing performance metrics,
 //! alerts, and system health in an interactive terminal UI.
 
-use crate::monitoring::{AlertSeverity, BottleneckType, HealthStatus, MonitoringManager};
+use crate::monitoring::MonitoringManager;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -23,6 +23,7 @@ use tokio::time::Instant;
 
 /// TUI monitoring dashboard
 pub struct MonitoringDashboard {
+    #[allow(dead_code)]
     monitoring: Arc<MonitoringManager>,
     active_tab: usize,
     should_quit: bool,
@@ -31,6 +32,7 @@ pub struct MonitoringDashboard {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum Tab {
     Overview,
     Metrics,
@@ -96,15 +98,11 @@ impl MonitoringDashboard {
                         KeyCode::Char('q') => {
                             self.should_quit = true;
                         }
-                        KeyCode::Left => {
-                            if self.active_tab > 0 {
-                                self.active_tab -= 1;
-                            }
+                        KeyCode::Left if self.active_tab > 0 => {
+                            self.active_tab -= 1;
                         }
-                        KeyCode::Right => {
-                            if self.active_tab < 4 {
-                                self.active_tab += 1;
-                            }
+                        KeyCode::Right if self.active_tab < 4 => {
+                            self.active_tab += 1;
                         }
                         KeyCode::Char('1') => self.active_tab = 0,
                         KeyCode::Char('2') => self.active_tab = 1,
