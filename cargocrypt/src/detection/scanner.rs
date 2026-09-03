@@ -108,63 +108,65 @@ impl Default for ScanConfig {
 impl ScanConfig {
     /// Create a configuration optimized for source code scanning
     pub fn for_source_code() -> Self {
-        let mut config = Self::default();
-        config.include_extensions = vec![
-            // Common source code extensions
-            "rs".to_string(),
-            "py".to_string(),
-            "js".to_string(),
-            "ts".to_string(),
-            "go".to_string(),
-            "java".to_string(),
-            "c".to_string(),
-            "cpp".to_string(),
-            "h".to_string(),
-            "hpp".to_string(),
-            "cs".to_string(),
-            "php".to_string(),
-            "rb".to_string(),
-            "swift".to_string(),
-            "kt".to_string(),
-            "scala".to_string(),
-            // Configuration files
-            "json".to_string(),
-            "yaml".to_string(),
-            "yml".to_string(),
-            "toml".to_string(),
-            "ini".to_string(),
-            "cfg".to_string(),
-            "conf".to_string(),
-            "config".to_string(),
-            // Environment and script files
-            "env".to_string(),
-            "sh".to_string(),
-            "bash".to_string(),
-            "zsh".to_string(),
-            "ps1".to_string(),
-            "bat".to_string(),
-            "cmd".to_string(),
-        ];
-        config
+        Self {
+            include_extensions: vec![
+                // Common source code extensions
+                "rs".to_string(),
+                "py".to_string(),
+                "js".to_string(),
+                "ts".to_string(),
+                "go".to_string(),
+                "java".to_string(),
+                "c".to_string(),
+                "cpp".to_string(),
+                "h".to_string(),
+                "hpp".to_string(),
+                "cs".to_string(),
+                "php".to_string(),
+                "rb".to_string(),
+                "swift".to_string(),
+                "kt".to_string(),
+                "scala".to_string(),
+                // Configuration files
+                "json".to_string(),
+                "yaml".to_string(),
+                "yml".to_string(),
+                "toml".to_string(),
+                "ini".to_string(),
+                "cfg".to_string(),
+                "conf".to_string(),
+                "config".to_string(),
+                // Environment and script files
+                "env".to_string(),
+                "sh".to_string(),
+                "bash".to_string(),
+                "zsh".to_string(),
+                "ps1".to_string(),
+                "bat".to_string(),
+                "cmd".to_string(),
+            ],
+            ..Self::default()
+        }
     }
 
     /// Create a configuration for configuration files only
     pub fn for_config_files() -> Self {
-        let mut config = Self::default();
-        config.include_extensions = vec![
-            "env".to_string(),
-            "json".to_string(),
-            "yaml".to_string(),
-            "yml".to_string(),
-            "toml".to_string(),
-            "ini".to_string(),
-            "cfg".to_string(),
-            "conf".to_string(),
-            "config".to_string(),
-            "properties".to_string(),
-        ];
-        config.scan_hidden = true; // Often config files are hidden
-        config
+        Self {
+            include_extensions: vec![
+                "env".to_string(),
+                "json".to_string(),
+                "yaml".to_string(),
+                "yml".to_string(),
+                "toml".to_string(),
+                "ini".to_string(),
+                "cfg".to_string(),
+                "conf".to_string(),
+                "config".to_string(),
+                "properties".to_string(),
+            ],
+            scan_hidden: true, // Often config files are hidden
+            ..Self::default()
+        }
     }
 
     /// Enable scanning of all file types (use with caution)
@@ -702,7 +704,7 @@ impl FileScanner {
             }
         }
 
-        confidence.max(0.0).min(1.0)
+        confidence.clamp(0.0, 1.0)
     }
 
     /// Calculate composite confidence score using multiple factors
@@ -766,7 +768,7 @@ impl FileScanner {
             confidence *= 0.3;
         }
 
-        confidence.max(0.0).min(1.0)
+        confidence.clamp(0.0, 1.0)
     }
 
     /// Detect high-entropy secrets using advanced algorithms

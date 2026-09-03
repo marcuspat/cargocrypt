@@ -301,7 +301,7 @@ impl EntropyAnalyzer {
             confidence -= 0.4;
         }
 
-        confidence = confidence.max(0.0).min(1.0);
+        confidence = confidence.clamp(0.0, 1.0);
 
         // The normalized-entropy term above is relative to the string's own
         // (possibly tiny) charset, so a short string that merely avoids
@@ -321,7 +321,7 @@ impl EntropyAnalyzer {
             confidence *= 0.3;
         }
 
-        confidence.max(0.0).min(1.0)
+        confidence.clamp(0.0, 1.0)
     }
 
     /// Check if text looks like natural language

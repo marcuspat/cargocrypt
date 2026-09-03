@@ -253,7 +253,7 @@ impl SecretPattern {
         }
 
         // Ensure confidence stays in valid range
-        confidence.max(0.0).min(1.0)
+        confidence.clamp(0.0, 1.0)
     }
 }
 
@@ -284,7 +284,7 @@ impl PatternRegistry {
         self.patterns.push(pattern);
         self.patterns_by_type
             .entry(secret_type)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(index);
     }
 
