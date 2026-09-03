@@ -36,18 +36,18 @@
 //! ```
 
 pub mod detector;
-pub mod patterns;
 pub mod entropy;
+pub mod findings;
+pub mod patterns;
 pub mod rules;
 pub mod scanner;
-pub mod findings;
 
-pub use detector::{SecretDetector, ScanOptions, DetectionConfig};
-pub use patterns::{SecretPattern, SecretType, PatternMatch};
+pub use detector::{DetectionConfig, ScanOptions, SecretDetector};
 pub use entropy::{EntropyAnalyzer, EntropyResult};
+pub use findings::{ConfidenceLevel, Finding, FoundSecret};
+pub use patterns::{PatternMatch, SecretPattern, SecretType};
 pub use rules::{CustomRule, RuleEngine, RuleType};
 pub use scanner::{FileScanner, ScanResult};
-pub use findings::{Finding, ConfidenceLevel, FoundSecret};
 
 use crate::error::CryptoResult;
 use std::path::Path;
@@ -117,7 +117,7 @@ mod tests {
         assert!(is_likely_secret("AKIAIOSFODNN7EXAMPLE"));
         assert!(is_likely_secret("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"));
         assert!(is_likely_secret("sk_test_FAKE1234567890ABCDEF"));
-        
+
         // Low entropy strings (unlikely to be secrets)
         assert!(!is_likely_secret("hello_world"));
         assert!(!is_likely_secret("my_variable_name"));

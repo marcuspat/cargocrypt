@@ -1,28 +1,34 @@
 //! Cryptographic operations module
-//! 
+//!
 //! This module provides secure cryptographic operations using ChaCha20-Poly1305
 //! for authenticated encryption and Argon2 for key derivation.
 
-pub mod engine;
-pub mod keys;
-pub mod secrets;
-pub mod errors;
 pub mod algorithm;
-pub mod store;
+pub mod engine;
+pub mod errors;
+pub mod keys;
 pub mod mock;
+pub mod secrets;
 pub mod security;
+pub mod store;
 
-pub use engine::{CryptoEngine, PerformanceProfile, EncryptionOptions, PerformanceBenchmark, BatchEncryptionResult};
+pub use algorithm::{Algorithm, AlgorithmExt};
+pub use engine::{
+    BatchEncryptionResult, CryptoEngine, EncryptionOptions, PerformanceBenchmark,
+    PerformanceProfile,
+};
+pub use errors::{CryptoError, CryptoResult};
 pub use keys::{DerivedKey, KeyDerivationParams, SecureRandom};
 pub use secrets::{EncryptedSecret, PlaintextSecret, SecretMetadata, SecretType};
-pub use errors::{CryptoError, CryptoResult};
-pub use algorithm::{Algorithm, AlgorithmExt};
-pub use store::{SecretStore, MemorySecretStore};
-pub use security::{SecureBuffer, SecureRandom as SecurityRandom, TimingDefense, KeyDerivationValidator, constant_time_compare};
+pub use security::{
+    constant_time_compare, KeyDerivationValidator, SecureBuffer, SecureRandom as SecurityRandom,
+    TimingDefense,
+};
+pub use store::{MemorySecretStore, SecretStore};
 
 // Re-export commonly used types
-pub use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 pub use argon2::Argon2;
+pub use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 /// Default parameters for cryptographic operations
 pub mod defaults {
@@ -30,9 +36,9 @@ pub mod defaults {
 
     /// Default Argon2 parameters - balance between security and performance
     pub const ARGON2_PARAMS: Params = match Params::new(
-        65536, // memory cost (64 MB)
-        3,     // time cost (iterations)
-        4,     // parallelism
+        65536,    // memory cost (64 MB)
+        3,        // time cost (iterations)
+        4,        // parallelism
         Some(32), // output length
     ) {
         Ok(params) => params,
