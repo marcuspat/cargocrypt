@@ -4,10 +4,7 @@
 //! parallel processing, smart filtering, and various file type handling.
 
 use crate::detection::{
-    Finding, FoundSecret, 
-    patterns::PatternRegistry, 
-    entropy::EntropyAnalyzer, 
-    rules::RuleEngine
+    entropy::EntropyAnalyzer, patterns::PatternRegistry, rules::RuleEngine, Finding, FoundSecret,
 };
 use crate::error::{CargoCryptError, CryptoResult};
 use ignore::WalkBuilder;
@@ -52,19 +49,42 @@ impl Default for ScanConfig {
             include_extensions: Vec::new(),
             exclude_extensions: vec![
                 // Binary files
-                "exe".to_string(), "dll".to_string(), "so".to_string(), "dylib".to_string(),
-                "bin".to_string(), "obj".to_string(), "lib".to_string(), "a".to_string(),
+                "exe".to_string(),
+                "dll".to_string(),
+                "so".to_string(),
+                "dylib".to_string(),
+                "bin".to_string(),
+                "obj".to_string(),
+                "lib".to_string(),
+                "a".to_string(),
                 // Images
-                "png".to_string(), "jpg".to_string(), "jpeg".to_string(), "gif".to_string(),
-                "bmp".to_string(), "svg".to_string(), "ico".to_string(),
+                "png".to_string(),
+                "jpg".to_string(),
+                "jpeg".to_string(),
+                "gif".to_string(),
+                "bmp".to_string(),
+                "svg".to_string(),
+                "ico".to_string(),
                 // Videos
-                "mp4".to_string(), "avi".to_string(), "mov".to_string(), "wmv".to_string(),
+                "mp4".to_string(),
+                "avi".to_string(),
+                "mov".to_string(),
+                "wmv".to_string(),
                 // Archives
-                "zip".to_string(), "tar".to_string(), "gz".to_string(), "rar".to_string(),
-                "7z".to_string(), "bz2".to_string(),
+                "zip".to_string(),
+                "tar".to_string(),
+                "gz".to_string(),
+                "rar".to_string(),
+                "7z".to_string(),
+                "bz2".to_string(),
                 // Documents
-                "pdf".to_string(), "doc".to_string(), "docx".to_string(), "xls".to_string(),
-                "xlsx".to_string(), "ppt".to_string(), "pptx".to_string(),
+                "pdf".to_string(),
+                "doc".to_string(),
+                "docx".to_string(),
+                "xls".to_string(),
+                "xlsx".to_string(),
+                "ppt".to_string(),
+                "pptx".to_string(),
             ],
             exclude_paths: vec![
                 "node_modules".to_string(),
@@ -91,16 +111,39 @@ impl ScanConfig {
         let mut config = Self::default();
         config.include_extensions = vec![
             // Common source code extensions
-            "rs".to_string(), "py".to_string(), "js".to_string(), "ts".to_string(),
-            "go".to_string(), "java".to_string(), "c".to_string(), "cpp".to_string(),
-            "h".to_string(), "hpp".to_string(), "cs".to_string(), "php".to_string(),
-            "rb".to_string(), "swift".to_string(), "kt".to_string(), "scala".to_string(),
+            "rs".to_string(),
+            "py".to_string(),
+            "js".to_string(),
+            "ts".to_string(),
+            "go".to_string(),
+            "java".to_string(),
+            "c".to_string(),
+            "cpp".to_string(),
+            "h".to_string(),
+            "hpp".to_string(),
+            "cs".to_string(),
+            "php".to_string(),
+            "rb".to_string(),
+            "swift".to_string(),
+            "kt".to_string(),
+            "scala".to_string(),
             // Configuration files
-            "json".to_string(), "yaml".to_string(), "yml".to_string(), "toml".to_string(),
-            "ini".to_string(), "cfg".to_string(), "conf".to_string(), "config".to_string(),
+            "json".to_string(),
+            "yaml".to_string(),
+            "yml".to_string(),
+            "toml".to_string(),
+            "ini".to_string(),
+            "cfg".to_string(),
+            "conf".to_string(),
+            "config".to_string(),
             // Environment and script files
-            "env".to_string(), "sh".to_string(), "bash".to_string(), "zsh".to_string(),
-            "ps1".to_string(), "bat".to_string(), "cmd".to_string(),
+            "env".to_string(),
+            "sh".to_string(),
+            "bash".to_string(),
+            "zsh".to_string(),
+            "ps1".to_string(),
+            "bat".to_string(),
+            "cmd".to_string(),
         ];
         config
     }
@@ -109,9 +152,16 @@ impl ScanConfig {
     pub fn for_config_files() -> Self {
         let mut config = Self::default();
         config.include_extensions = vec![
-            "env".to_string(), "json".to_string(), "yaml".to_string(), "yml".to_string(),
-            "toml".to_string(), "ini".to_string(), "cfg".to_string(), "conf".to_string(),
-            "config".to_string(), "properties".to_string(),
+            "env".to_string(),
+            "json".to_string(),
+            "yaml".to_string(),
+            "yml".to_string(),
+            "toml".to_string(),
+            "ini".to_string(),
+            "cfg".to_string(),
+            "conf".to_string(),
+            "config".to_string(),
+            "properties".to_string(),
         ];
         config.scan_hidden = true; // Often config files are hidden
         config
@@ -210,8 +260,9 @@ pub struct FileScanner {
 impl FileScanner {
     /// Create a new file scanner
     pub fn new(config: ScanConfig) -> CryptoResult<Self> {
-        let pattern_registry = Arc::new(PatternRegistry::new()
-            .map_err(|e| CargoCryptError::detection_error(&format!("Failed to create pattern registry: {}", e)))?);
+        let pattern_registry = Arc::new(PatternRegistry::new().map_err(|e| {
+            CargoCryptError::detection_error(&format!("Failed to create pattern registry: {}", e))
+        })?);
         let entropy_analyzer = Arc::new(EntropyAnalyzer::new());
         let rule_engine = Arc::new(RuleEngine::new());
 
@@ -242,11 +293,10 @@ impl FileScanner {
     pub fn scan_file<P: AsRef<Path>>(&self, path: P) -> CryptoResult<ScanResult> {
         let path = path.as_ref();
         let start_time = Instant::now();
-        
+
         // Check if file should be scanned
         if let Some(skip_reason) = self.should_skip_file(path)? {
-            return Ok(ScanResult::new(path.to_path_buf())
-                .skipped_with_reason(skip_reason));
+            return Ok(ScanResult::new(path.to_path_buf()).skipped_with_reason(skip_reason));
         }
 
         // Read file content
@@ -262,7 +312,7 @@ impl FileScanner {
 
         // Scan for secrets
         let findings = self.scan_content(&content, path)?;
-        
+
         let scan_time_ms = start_time.elapsed().as_millis() as u64;
 
         Ok(ScanResult::new(path.to_path_buf())
@@ -274,7 +324,7 @@ impl FileScanner {
     /// Scan a directory
     pub fn scan_directory<P: AsRef<Path>>(&self, path: P) -> CryptoResult<Vec<ScanResult>> {
         let start_time = Instant::now();
-        
+
         // Build the walker
         let mut builder = WalkBuilder::new(path.as_ref());
         builder
@@ -293,7 +343,7 @@ impl FileScanner {
             .filter_map(|entry| {
                 let entry = entry.ok()?;
                 let path = entry.path();
-                
+
                 if path.is_file() {
                     Some(path.to_path_buf())
                 } else {
@@ -309,19 +359,27 @@ impl FileScanner {
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(num_threads)
                     .build()
-                    .map_err(|e| CargoCryptError::detection_error(&format!("Failed to create thread pool: {}", e)))?
+                    .map_err(|e| {
+                        CargoCryptError::detection_error(&format!(
+                            "Failed to create thread pool: {}",
+                            e
+                        ))
+                    })?
                     .install(|| {
-                        files.par_iter()
+                        files
+                            .par_iter()
                             .map(|file| self.scan_file(file))
                             .collect::<Result<Vec<_>, _>>()
                     })?
             } else {
-                files.par_iter()
+                files
+                    .par_iter()
                     .map(|file| self.scan_file(file))
                     .collect::<Result<Vec<_>, _>>()?
             }
         } else {
-            files.iter()
+            files
+                .iter()
                 .map(|file| self.scan_file(file))
                 .collect::<Result<Vec<_>, _>>()?
         };
@@ -345,7 +403,7 @@ impl FileScanner {
         for pattern_match in pattern_matches {
             let line_info = self.get_line_info(content, pattern_match.start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
-            
+
             let secret = FoundSecret::new(
                 pattern_match.matched_text.clone(),
                 pattern_match.secret_type.to_string(),
@@ -359,7 +417,7 @@ impl FileScanner {
             let base_confidence = pattern_match.base_confidence;
             let context_text = context_lines.join(" ");
             let entropy_result = self.entropy_analyzer.analyze(&pattern_match.matched_text);
-            
+
             let adjusted_confidence = self.calculate_composite_confidence(
                 base_confidence,
                 &pattern_match.matched_text,
@@ -382,7 +440,9 @@ impl FileScanner {
         }
 
         // 2. Custom rule-based detection
-        let rule_matches = self.rule_engine.execute_rules(content, Some(&file_path.to_string_lossy()))?;
+        let rule_matches = self
+            .rule_engine
+            .execute_rules(content, Some(&file_path.to_string_lossy()))?;
         for rule_match in rule_matches {
             // Skip if already found
             if found_positions.contains(&(rule_match.start, rule_match.end)) {
@@ -391,7 +451,7 @@ impl FileScanner {
 
             let line_info = self.get_line_info(content, rule_match.start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
-            
+
             let secret = FoundSecret::new(
                 rule_match.matched_text.clone(),
                 "custom_rule".to_string(),
@@ -403,7 +463,7 @@ impl FileScanner {
 
             let entropy_result = self.entropy_analyzer.analyze(&rule_match.matched_text);
             let context_text = context_lines.join(" ");
-            
+
             let adjusted_confidence = self.calculate_composite_confidence(
                 rule_match.confidence,
                 &rule_match.matched_text,
@@ -431,7 +491,7 @@ impl FileScanner {
             let line_info = self.get_line_info(content, start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
             let context_text = context_lines.join(" ");
-            
+
             let secret = FoundSecret::new(
                 substring.clone(),
                 self.classify_entropy_secret(&substring, &entropy_result),
@@ -510,13 +570,17 @@ impl FileScanner {
         // Check extension
         if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
             let extension = extension.to_lowercase();
-            
+
             // Check include list (if specified)
-            if !self.config.include_extensions.is_empty() &&
-               !self.config.include_extensions.contains(&extension) {
-                return Ok(Some(format!("Extension not in include list: {}", extension)));
+            if !self.config.include_extensions.is_empty()
+                && !self.config.include_extensions.contains(&extension)
+            {
+                return Ok(Some(format!(
+                    "Extension not in include list: {}",
+                    extension
+                )));
             }
-            
+
             // Check exclude list
             if self.config.exclude_extensions.contains(&extension) {
                 return Ok(Some(format!("Extension in exclude list: {}", extension)));
@@ -527,7 +591,10 @@ impl FileScanner {
         let path_str = path.to_string_lossy().to_lowercase();
         for exclude_path in &self.config.exclude_paths {
             if path_str.contains(&exclude_path.to_lowercase()) {
-                return Ok(Some(format!("Path contains excluded component: {}", exclude_path)));
+                return Ok(Some(format!(
+                    "Path contains excluded component: {}",
+                    exclude_path
+                )));
             }
         }
 
@@ -586,8 +653,17 @@ impl FileScanner {
 
         // Decrease confidence for test/example content
         let test_indicators = [
-            "test", "example", "sample", "placeholder", "dummy", "fake",
-            "mock", "demo", "todo", "fixme", "changeme",
+            "test",
+            "example",
+            "sample",
+            "placeholder",
+            "dummy",
+            "fake",
+            "mock",
+            "demo",
+            "todo",
+            "fixme",
+            "changeme",
         ];
 
         for indicator in &test_indicators {
@@ -597,16 +673,27 @@ impl FileScanner {
         }
 
         // Decrease confidence for comments
-        if context.trim_start().starts_with("//") ||
-           context.trim_start().starts_with("#") ||
-           context.trim_start().starts_with("/*") {
+        if context.trim_start().starts_with("//")
+            || context.trim_start().starts_with("#")
+            || context.trim_start().starts_with("/*")
+        {
             confidence -= 0.1;
         }
 
         // Increase confidence for configuration-like contexts
         let config_indicators = [
-            "config", "settings", "env", "environment", "production", "prod",
-            "staging", "live", "secret", "key", "token", "password",
+            "config",
+            "settings",
+            "env",
+            "environment",
+            "production",
+            "prod",
+            "staging",
+            "live",
+            "secret",
+            "key",
+            "token",
+            "password",
         ];
 
         for indicator in &config_indicators {
@@ -628,10 +715,10 @@ impl FileScanner {
         file_path: &Path,
     ) -> f64 {
         let mut confidence = base_confidence;
-        
+
         // Factor 1: Context-based adjustment
         confidence = self.adjust_confidence_with_context(confidence, matched_text, context);
-        
+
         // Factor 2: Entropy-based adjustment
         if entropy_result.shannon_entropy > 0.0 {
             if entropy_result.shannon_entropy < 2.5 {
@@ -640,7 +727,7 @@ impl FileScanner {
                 confidence *= 1.1; // High entropy increases confidence
             }
         }
-        
+
         // Factor 3: Length-based adjustment
         let length = matched_text.len();
         if length < 8 {
@@ -650,7 +737,7 @@ impl FileScanner {
         } else if length > 200 {
             confidence *= 0.8; // Very long strings might be data, not secrets
         }
-        
+
         // Factor 4: Character diversity
         let char_types = self.count_character_types(matched_text);
         if char_types >= 3 {
@@ -658,7 +745,7 @@ impl FileScanner {
         } else if char_types == 1 {
             confidence *= 0.7; // Single character type
         }
-        
+
         // Factor 5: File type adjustment
         if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
             match ext.to_lowercase().as_str() {
@@ -673,12 +760,12 @@ impl FileScanner {
                 _ => {}
             }
         }
-        
+
         // Factor 6: Known false positive patterns
         if self.is_likely_false_positive(matched_text) {
             confidence *= 0.3;
         }
-        
+
         confidence.max(0.0).min(1.0)
     }
 
@@ -689,10 +776,10 @@ impl FileScanner {
         found_positions: &std::collections::HashSet<(usize, usize)>,
     ) -> Vec<(String, usize, crate::detection::entropy::EntropyResult)> {
         let mut results = Vec::new();
-        
+
         // Split content into tokens for analysis
         let tokens = self.tokenize_content(content);
-        
+
         for (token, start_pos) in tokens {
             // Skip if already found
             let end_pos = start_pos + token.len();
@@ -701,14 +788,14 @@ impl FileScanner {
             }) {
                 continue;
             }
-            
+
             // Skip very short tokens
             if token.len() < 8 {
                 continue;
             }
-            
+
             let entropy_result = self.entropy_analyzer.analyze(&token);
-            
+
             // Advanced entropy analysis
             if entropy_result.is_likely_secret {
                 // Additional validation for high-entropy strings
@@ -717,7 +804,7 @@ impl FileScanner {
                 }
             }
         }
-        
+
         // Also look for base64-encoded secrets
         let base64_candidates = self.find_base64_candidates(content, found_positions);
         for (candidate, start_pos) in base64_candidates {
@@ -726,7 +813,7 @@ impl FileScanner {
                 results.push((candidate, start_pos, entropy_result));
             }
         }
-        
+
         results
     }
 
@@ -771,8 +858,15 @@ impl FileScanner {
 
                         // Validate the candidate
                         if self.validate_contextual_candidate(matched_text, keyword) {
-                            let confidence = self.calculate_contextual_confidence(matched_text, keyword);
-                            results.push((keyword.to_string(), matched_text.to_string(), start, end, confidence));
+                            let confidence =
+                                self.calculate_contextual_confidence(matched_text, keyword);
+                            results.push((
+                                keyword.to_string(),
+                                matched_text.to_string(),
+                                start,
+                                end,
+                                confidence,
+                            ));
                         }
                     }
                 }
@@ -801,21 +895,21 @@ impl FileScanner {
         if text.len() == 64 && text.chars().all(|c| c.is_ascii_hexdigit()) {
             return "sha256_hash_or_token".to_string();
         }
-        
+
         // Check character composition
         let has_uppercase = text.chars().any(|c| c.is_ascii_uppercase());
         let has_lowercase = text.chars().any(|c| c.is_ascii_lowercase());
         let has_digits = text.chars().any(|c| c.is_ascii_digit());
         let has_special = text.chars().any(|c| !c.is_ascii_alphanumeric());
-        
+
         if has_uppercase && has_lowercase && has_digits && has_special {
             return "high_entropy_password".to_string();
         }
-        
+
         if entropy_result.charset_size > 50 {
             return "high_entropy_token".to_string();
         }
-        
+
         "high_entropy_string".to_string()
     }
 
@@ -838,7 +932,7 @@ impl FileScanner {
         let has_uppercase = text.chars().any(|c| c.is_ascii_uppercase());
         let has_digits = text.chars().any(|c| c.is_ascii_digit());
         let has_special = text.chars().any(|c| !c.is_ascii_alphanumeric());
-        
+
         [has_lowercase, has_uppercase, has_digits, has_special]
             .iter()
             .filter(|&&x| x)
@@ -861,8 +955,7 @@ impl FileScanner {
         // precisely by `is_sequential_pattern` below, which checks the full
         // string rather than an arbitrary substring.
         let false_positive_patterns = [
-            "aaaaaaa", "bbbbbbb",
-            "password", "00000000", "11111111", "ffffffff", "deadbeef",
+            "aaaaaaa", "bbbbbbb", "password", "00000000", "11111111", "ffffffff", "deadbeef",
             "cafebabe", "test1234", "admin123", "user1234",
         ];
 
@@ -894,7 +987,7 @@ impl FileScanner {
         let mut current_token = String::new();
         let mut start_pos = 0;
         let mut in_token = false;
-        
+
         for (i, ch) in content.char_indices() {
             if ch.is_alphanumeric() || "-_+/=".contains(ch) {
                 if !in_token {
@@ -910,12 +1003,12 @@ impl FileScanner {
                 in_token = false;
             }
         }
-        
+
         // Don't forget the last token
         if in_token && current_token.len() >= 8 {
             tokens.push((current_token, start_pos));
         }
-        
+
         tokens
     }
 
@@ -927,26 +1020,29 @@ impl FileScanner {
     ) -> Vec<(String, usize)> {
         let mut candidates = Vec::new();
         let base64_regex = regex::Regex::new(r"[A-Za-z0-9+/]{20,}={0,2}").unwrap();
-        
+
         for m in base64_regex.find_iter(content) {
             let start = m.start();
             let end = m.end();
-            
-            if found_positions.iter().any(|(s, e)| {
-                (start >= *s && start < *e) || (end > *s && end <= *e)
-            }) {
+
+            if found_positions
+                .iter()
+                .any(|(s, e)| (start >= *s && start < *e) || (end > *s && end <= *e))
+            {
                 continue;
             }
-            
+
             let candidate = m.as_str();
-            
+
             // Validate base64
-            if candidate.len() % 4 == 0 || (candidate.len() % 4 == 2 && candidate.ends_with("==")) ||
-               (candidate.len() % 4 == 3 && candidate.ends_with("=")) {
+            if candidate.len() % 4 == 0
+                || (candidate.len() % 4 == 2 && candidate.ends_with("=="))
+                || (candidate.len() % 4 == 3 && candidate.ends_with("="))
+            {
                 candidates.push((candidate.to_string(), start));
             }
         }
-        
+
         candidates
     }
 
@@ -960,26 +1056,29 @@ impl FileScanner {
         if entropy_result.shannon_entropy < 3.5 {
             return false;
         }
-        
+
         // Must have reasonable character diversity
         if entropy_result.charset_size < 10 {
             return false;
         }
-        
+
         // Must not be a known false positive
         if self.is_likely_false_positive(text) {
             return false;
         }
-        
+
         // Additional checks for very high entropy
         if entropy_result.shannon_entropy > 5.5 {
             // Very high entropy might be compressed data or binary
             // Check if it's printable ASCII
-            if !text.chars().all(|c| c.is_ascii_graphic() || c.is_ascii_whitespace()) {
+            if !text
+                .chars()
+                .all(|c| c.is_ascii_graphic() || c.is_ascii_whitespace())
+            {
                 return false;
             }
         }
-        
+
         true
     }
 
@@ -992,7 +1091,7 @@ impl FileScanner {
                 return false;
             }
         }
-        
+
         // Must have minimum complexity for certain keywords
         match keyword {
             "password" => self.count_character_types(text) >= 2,
@@ -1005,29 +1104,29 @@ impl FileScanner {
     /// Calculate confidence for contextual findings
     fn calculate_contextual_confidence(&self, text: &str, keyword: &str) -> f64 {
         let mut confidence = 0.6; // Base confidence for contextual findings
-        
+
         // Adjust based on keyword
         match keyword {
             "password" | "private_key" => confidence += 0.15,
             "api_key" | "token" | "secret" => confidence += 0.1,
             _ => {}
         }
-        
+
         // Adjust based on complexity
         let char_types = self.count_character_types(text);
         confidence += (char_types as f64) * 0.05;
-        
+
         // Adjust based on length
         if text.len() > 30 {
             confidence += 0.1;
         }
-        
+
         // Check entropy
         let entropy_result = self.entropy_analyzer.analyze(text);
         if entropy_result.shannon_entropy > 4.0 {
             confidence += 0.1;
         }
-        
+
         confidence.min(0.95)
     }
 
@@ -1087,8 +1186,8 @@ struct LineInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_scan_config_creation() {
@@ -1105,7 +1204,7 @@ mod tests {
     #[test]
     fn test_should_skip_file() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        
+
         // This test would need actual files to be meaningful
         // In practice, we'd create temporary files with different extensions
     }
@@ -1115,13 +1214,13 @@ mod tests {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nSECRET=my_secret_value_123";
         let path = Path::new("test.env");
-        
+
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
-        
+
         // Should find the AWS key
         assert!(findings.iter().any(|f| f.secret.value.contains("AKIA")));
-        
+
         // Should have confidence scores
         for finding in &findings {
             assert!(finding.confidence > 0.0);
@@ -1133,7 +1232,7 @@ mod tests {
     fn test_line_info_calculation() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "line 1\nline 2\nline 3 with secret";
-        
+
         let line_info = scanner.get_line_info(content, content.find("secret").unwrap());
         assert_eq!(line_info.line_number, 3);
         assert!(line_info.column_number > 10);
@@ -1143,7 +1242,7 @@ mod tests {
     fn test_context_lines() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "line 1\nline 2\nline 3\nline 4\nline 5";
-        
+
         let context = scanner.get_context_lines(content, 3, 1);
         assert_eq!(context.len(), 3); // line 2, 3, 4
         assert_eq!(context[1], "line 3");
@@ -1152,21 +1251,15 @@ mod tests {
     #[test]
     fn test_confidence_adjustment() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        
+
         // Should decrease confidence for test content
-        let adjusted = scanner.adjust_confidence_with_context(
-            0.9,
-            "test_secret",
-            "this is a test example",
-        );
+        let adjusted =
+            scanner.adjust_confidence_with_context(0.9, "test_secret", "this is a test example");
         assert!(adjusted < 0.9);
 
         // Should increase confidence for config content
-        let adjusted = scanner.adjust_confidence_with_context(
-            0.7,
-            "real_secret",
-            "production config secret",
-        );
+        let adjusted =
+            scanner.adjust_confidence_with_context(0.7, "real_secret", "production config secret");
         assert!(adjusted > 0.7);
     }
 
@@ -1175,13 +1268,14 @@ mod tests {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "password=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
         let path = Path::new("config.env");
-        
+
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
 
         // Should classify high-entropy strings
-        let high_entropy_finding = findings.iter()
-            .find(|f| f.secret.secret_type.contains("entropy") || f.secret.secret_type.contains("password"));
+        let high_entropy_finding = findings.iter().find(|f| {
+            f.secret.secret_type.contains("entropy") || f.secret.secret_type.contains("password")
+        });
         assert!(high_entropy_finding.is_some());
     }
 
@@ -1190,12 +1284,13 @@ mod tests {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "api_key = sk_live_abcdef1234567890\ntoken: ghp_1234567890abcdef1234567890abcdef12345678";
         let path = Path::new("config.rs");
-        
+
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
-        
+
         // Should find contextual patterns
-        let contextual_finding = findings.iter()
+        let contextual_finding = findings
+            .iter()
             .find(|f| f.detector_name == "contextual_analyzer");
         // Note: may or may not find contextual patterns depending on existing pattern matches
     }
@@ -1203,13 +1298,13 @@ mod tests {
     #[test]
     fn test_false_positive_detection() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        
+
         // Should identify common false positives
         assert!(scanner.is_likely_false_positive("aaaaaaaaaa"));
         assert!(scanner.is_likely_false_positive("1234567890"));
         assert!(scanner.is_likely_false_positive("abcdefghij"));
         assert!(scanner.is_likely_false_positive("password123"));
-        
+
         // Should not flag legitimate-looking secrets
         assert!(!scanner.is_likely_false_positive("AKIAIOSFODNN7EXAMPLE"));
         assert!(!scanner.is_likely_false_positive("sk_live_abcdef1234567890"));
@@ -1218,7 +1313,7 @@ mod tests {
     #[test]
     fn test_character_type_counting() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        
+
         assert_eq!(scanner.count_character_types("abc"), 1); // only lowercase
         assert_eq!(scanner.count_character_types("ABC"), 1); // only uppercase
         assert_eq!(scanner.count_character_types("123"), 1); // only digits
@@ -1230,12 +1325,12 @@ mod tests {
     #[test]
     fn test_sequential_pattern_detection() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        
+
         assert!(scanner.is_sequential_pattern("abcd"));
         assert!(scanner.is_sequential_pattern("1234"));
         assert!(scanner.is_sequential_pattern("dcba"));
         assert!(scanner.is_sequential_pattern("4321"));
-        
+
         assert!(!scanner.is_sequential_pattern("abdc"));
         assert!(!scanner.is_sequential_pattern("1324"));
         assert!(!scanner.is_sequential_pattern("AKIAIOSFODNN7EXAMPLE"));
@@ -1245,13 +1340,15 @@ mod tests {
     fn test_tokenization() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "key=AKIAIOSFODNN7EXAMPLE value=\"wJalrXUtnFEMI/K7MDENG\"";
-        
+
         let tokens = scanner.tokenize_content(content);
-        
+
         // Should extract meaningful tokens
         assert!(tokens.iter().any(|(token, _)| token.contains("AKIA")));
-        assert!(tokens.iter().any(|(token, _)| token.contains("wJalrXUtnFEMI")));
-        
+        assert!(tokens
+            .iter()
+            .any(|(token, _)| token.contains("wJalrXUtnFEMI")));
+
         // All tokens should be at least 8 characters
         for (token, _) in &tokens {
             assert!(token.len() >= 8);
@@ -1263,12 +1360,13 @@ mod tests {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
         let content = "secret=dGVzdF9zZWNyZXRfa2V5XzEyMzQ1Njc4OTA=";
         let found_positions = std::collections::HashSet::new();
-        
+
         let candidates = scanner.find_base64_candidates(content, &found_positions);
         assert!(!candidates.is_empty());
-        
+
         // Should find base64-encoded content
-        let base64_candidate = candidates.iter()
+        let base64_candidate = candidates
+            .iter()
             .find(|(candidate, _)| candidate.contains("dGVzdF"));
         assert!(base64_candidate.is_some());
     }
@@ -1276,11 +1374,12 @@ mod tests {
     #[test]
     fn test_deduplication() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        let content =
+            "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
         let path = Path::new("test.env");
-        
+
         let findings = scanner.scan_content(content, path).unwrap();
-        
+
         // Should not have duplicate findings for the same position
         let mut positions = std::collections::HashSet::new();
         for finding in &findings {

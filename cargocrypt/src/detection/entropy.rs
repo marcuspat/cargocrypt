@@ -69,11 +69,11 @@ impl EntropyAnalyzer {
     /// Create a new entropy analyzer with default settings
     pub fn new() -> Self {
         Self {
-            min_length: 8,          // Don't analyze very short strings
-            max_length: 1000,       // Don't analyze very long strings
+            min_length: 8,               // Don't analyze very short strings
+            max_length: 1000,            // Don't analyze very long strings
             min_entropy_threshold: 3.5,  // Minimum Shannon entropy
             min_normalized_entropy: 0.6, // Minimum normalized entropy
-            min_charset_size: 8,    // Minimum character variety
+            min_charset_size: 8,         // Minimum character variety
         }
     }
 
@@ -133,12 +133,8 @@ impl EntropyAnalyzer {
         );
 
         // Calculate confidence score
-        let confidence = self.calculate_confidence(
-            shannon_entropy,
-            normalized_entropy,
-            charset_size,
-            text,
-        );
+        let confidence =
+            self.calculate_confidence(shannon_entropy, normalized_entropy, charset_size, text);
 
         EntropyResult {
             shannon_entropy,
@@ -161,19 +157,26 @@ impl EntropyAnalyzer {
     }
 
     /// Extract high-entropy substrings from text
-    pub fn extract_high_entropy_substrings(&self, text: &str, min_length: usize) -> Vec<(String, EntropyResult)> {
+    pub fn extract_high_entropy_substrings(
+        &self,
+        text: &str,
+        min_length: usize,
+    ) -> Vec<(String, EntropyResult)> {
         let mut results = Vec::new();
-        
+
         // Try different substring lengths
         for len in min_length..=std::cmp::min(text.len(), self.max_length) {
             for start in 0..=(text.len().saturating_sub(len)) {
                 let substring = &text[start..start + len];
-                
+
                 // Skip if it contains whitespace or common delimiters
-                if substring.chars().any(|c| c.is_whitespace() || "\"'(){}[]<>".contains(c)) {
+                if substring
+                    .chars()
+                    .any(|c| c.is_whitespace() || "\"'(){}[]<>".contains(c))
+                {
                     continue;
                 }
-                
+
                 let result = self.analyze(substring);
                 if result.is_likely_secret && result.confidence > 0.7 {
                     results.push((substring.to_string(), result));
@@ -184,7 +187,7 @@ impl EntropyAnalyzer {
         // Remove duplicates and sort by confidence
         results.sort_by(|a, b| b.1.confidence.partial_cmp(&a.1.confidence).unwrap());
         results.dedup_by(|a, b| a.0 == b.0);
-        
+
         results
     }
 
@@ -206,7 +209,11 @@ impl EntropyAnalyzer {
     }
 
     /// Calculate Shannon entropy
-    fn calculate_shannon_entropy(&self, frequencies: &HashMap<char, f64>, _total_length: usize) -> f64 {
+    fn calculate_shannon_entropy(
+        &self,
+        frequencies: &HashMap<char, f64>,
+        _total_length: usize,
+    ) -> f64 {
         frequencies
             .values()
             .filter(|&&freq| freq > 0.0)
@@ -236,7 +243,7 @@ impl EntropyAnalyzer {
         }
 
         // Additional heuristics
-        
+
         // Reject if it looks like natural language
         if self.looks_like_natural_language(text) {
             return false;
@@ -330,12 +337,65 @@ impl EntropyAnalyzer {
         // since it only takes one accidental hit combined with another to
         // misfire; tokenizing avoids spurious mid-token matches entirely.
         let common_words = [
-            "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "was", "one",
-            "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now",
-            "old", "see", "two", "way", "who", "boy", "did", "man", "car", "dog", "cat", "run",
-            "this", "that", "with", "from", "have", "will", "your", "what", "when", "where",
-            "quick", "brown", "fox", "jumps", "over", "lazy",
-            "configuration", "value", "value's", "config", "settings", "default", "example",
+            "the",
+            "and",
+            "for",
+            "are",
+            "but",
+            "not",
+            "you",
+            "all",
+            "can",
+            "had",
+            "was",
+            "one",
+            "our",
+            "out",
+            "day",
+            "get",
+            "has",
+            "him",
+            "his",
+            "how",
+            "its",
+            "may",
+            "new",
+            "now",
+            "old",
+            "see",
+            "two",
+            "way",
+            "who",
+            "boy",
+            "did",
+            "man",
+            "car",
+            "dog",
+            "cat",
+            "run",
+            "this",
+            "that",
+            "with",
+            "from",
+            "have",
+            "will",
+            "your",
+            "what",
+            "when",
+            "where",
+            "quick",
+            "brown",
+            "fox",
+            "jumps",
+            "over",
+            "lazy",
+            "configuration",
+            "value",
+            "value's",
+            "config",
+            "settings",
+            "default",
+            "example",
         ];
 
         let words: Vec<&str> = lowercase_text
@@ -359,9 +419,9 @@ impl EntropyAnalyzer {
 
     /// Check if string is all the same character type (all digits, all uppercase, etc.)
     fn is_single_character_type(&self, text: &str) -> bool {
-        text.chars().all(|c| c.is_ascii_digit()) ||
-        text.chars().all(|c| c.is_ascii_uppercase()) ||
-        text.chars().all(|c| c.is_ascii_lowercase())
+        text.chars().all(|c| c.is_ascii_digit())
+            || text.chars().all(|c| c.is_ascii_uppercase())
+            || text.chars().all(|c| c.is_ascii_lowercase())
     }
 
     /// Check for common non-secret patterns
@@ -380,9 +440,17 @@ impl EntropyAnalyzer {
         // `is_single_character_type` catches purely-numeric or
         // purely-alphabetic runs, so no substring heuristic is needed here.
         let non_secret_patterns = [
-            "localhost", "127.0.0.1", "example.com", "test.com",
-            "placeholder", "your_key_here", "insert_key_here",
-            "todo", "fixme", "changeme", "password123",
+            "localhost",
+            "127.0.0.1",
+            "example.com",
+            "test.com",
+            "placeholder",
+            "your_key_here",
+            "insert_key_here",
+            "todo",
+            "fixme",
+            "changeme",
+            "password123",
         ];
 
         non_secret_patterns
@@ -457,7 +525,11 @@ pub mod utils {
     pub fn entropy_stats(text: &str) -> (f64, f64, usize) {
         let analyzer = EntropyAnalyzer::new();
         let result = analyzer.analyze(text);
-        (result.shannon_entropy, result.normalized_entropy, result.charset_size)
+        (
+            result.shannon_entropy,
+            result.normalized_entropy,
+            result.charset_size,
+        )
     }
 }
 
@@ -468,12 +540,12 @@ mod tests {
     #[test]
     fn test_entropy_analysis() {
         let analyzer = EntropyAnalyzer::new();
-        
+
         // High entropy string (AWS key format)
         let high_entropy = analyzer.analyze("AKIAIOSFODNN7EXAMPLE");
         assert!(high_entropy.shannon_entropy > 3.0);
         assert!(high_entropy.normalized_entropy > 0.5);
-        
+
         // Low entropy string
         let low_entropy = analyzer.analyze("aaaaaaaaaaaaa");
         assert!(low_entropy.shannon_entropy < 1.0);
@@ -483,11 +555,19 @@ mod tests {
     #[test]
     fn test_secret_detection() {
         let analyzer = EntropyAnalyzer::new();
-        
+
         // Should detect as likely secret
-        assert!(analyzer.analyze("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY").is_likely_secret);
-        assert!(analyzer.analyze("sk_test_FAKE1234567890ABCDEF").is_likely_secret);
-        
+        assert!(
+            analyzer
+                .analyze("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+                .is_likely_secret
+        );
+        assert!(
+            analyzer
+                .analyze("sk_test_FAKE1234567890ABCDEF")
+                .is_likely_secret
+        );
+
         // Should not detect as secret
         assert!(!analyzer.analyze("hello_world_example").is_likely_secret);
         assert!(!analyzer.analyze("12345678901234567890").is_likely_secret);
@@ -497,7 +577,7 @@ mod tests {
     #[test]
     fn test_natural_language_detection() {
         let analyzer = EntropyAnalyzer::new();
-        
+
         assert!(analyzer.looks_like_natural_language("the quick brown fox"));
         assert!(analyzer.looks_like_natural_language("you can see the dog"));
         assert!(!analyzer.looks_like_natural_language("xk2j9mL4nQ8pR7vS"));
@@ -506,11 +586,11 @@ mod tests {
     #[test]
     fn test_pattern_recognition() {
         let analyzer = EntropyAnalyzer::new();
-        
+
         // Should recognize secret-like patterns
         assert!(analyzer.has_secret_like_patterns("Aa1@"));
         assert!(analyzer.has_secret_like_patterns("MyS3cr3t!"));
-        
+
         // Should not recognize simple patterns
         assert!(!analyzer.has_secret_like_patterns("hello"));
         assert!(!analyzer.has_secret_like_patterns("12345"));
@@ -519,13 +599,13 @@ mod tests {
     #[test]
     fn test_utility_functions() {
         use super::utils::*;
-        
+
         assert!(has_high_entropy("AKIAIOSFODNN7EXAMPLE"));
         assert!(!has_high_entropy("hello"));
-        
+
         let entropy = shannon_entropy("AKIAIOSFODNN7EXAMPLE");
         assert!(entropy > 3.0);
-        
+
         let highest = highest_entropy_substring("hello AKIAIOSFODNN7EXAMPLE world", 8);
         assert!(highest.is_some());
         assert!(highest.unwrap().contains("AKIA"));
@@ -534,11 +614,11 @@ mod tests {
     #[test]
     fn test_confidence_scoring() {
         let analyzer = EntropyAnalyzer::new();
-        
+
         // High confidence for good secrets
         let aws_key = analyzer.analyze("AKIAIOSFODNN7EXAMPLE");
         assert!(aws_key.confidence > 0.7);
-        
+
         // Low confidence for non-secrets
         let simple = analyzer.analyze("hello_world");
         assert!(simple.confidence < 0.3);

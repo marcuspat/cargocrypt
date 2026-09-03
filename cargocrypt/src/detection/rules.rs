@@ -137,21 +137,27 @@ impl CustomRule {
         file_path: Option<&str>,
     ) -> CryptoResult<Vec<RuleMatch>> {
         match rule_type {
-            RuleType::Regex { pattern, case_sensitive } => {
-                self.check_regex_matches(pattern, text, *case_sensitive)
-            }
-            RuleType::Entropy { min_entropy, min_length, max_length } => {
-                self.check_entropy_matches(text, *min_entropy, *min_length, *max_length)
-            }
-            RuleType::Keyword { keywords, context_radius, require_high_entropy } => {
-                self.check_keyword_matches(text, keywords, *context_radius, *require_high_entropy)
-            }
+            RuleType::Regex {
+                pattern,
+                case_sensitive,
+            } => self.check_regex_matches(pattern, text, *case_sensitive),
+            RuleType::Entropy {
+                min_entropy,
+                min_length,
+                max_length,
+            } => self.check_entropy_matches(text, *min_entropy, *min_length, *max_length),
+            RuleType::Keyword {
+                keywords,
+                context_radius,
+                require_high_entropy,
+            } => self.check_keyword_matches(text, keywords, *context_radius, *require_high_entropy),
             RuleType::Composite { rules, operator } => {
                 self.check_composite_matches(text, rules, operator, file_path)
             }
-            RuleType::FileSpecific { file_patterns, rule } => {
-                self.check_file_specific_matches(text, file_patterns, rule, file_path)
-            }
+            RuleType::FileSpecific {
+                file_patterns,
+                rule,
+            } => self.check_file_specific_matches(text, file_patterns, rule, file_path),
         }
     }
 
@@ -167,8 +173,9 @@ impl CustomRule {
             format!("(?i){}", pattern)
         };
 
-        let regex = Regex::new(&regex_pattern)
-            .map_err(|e| CargoCryptError::detection_error(&format!("Invalid regex pattern: {}", e)))?;
+        let regex = Regex::new(&regex_pattern).map_err(|e| {
+            CargoCryptError::detection_error(&format!("Invalid regex pattern: {}", e))
+        })?;
 
         let matches = regex
             .find_iter(text)
@@ -194,7 +201,7 @@ impl CustomRule {
         max_length: usize,
     ) -> CryptoResult<Vec<RuleMatch>> {
         use crate::detection::entropy::EntropyAnalyzer;
-        
+
         let analyzer = EntropyAnalyzer::new();
         let candidates = analyzer.extract_high_entropy_substrings(text, min_length);
 
@@ -206,11 +213,20 @@ impl CustomRule {
             .map(|(substring, entropy_result)| {
                 let start = text.find(&substring).unwrap_or(0);
                 let end = start + substring.len();
-                
+
                 let mut metadata = HashMap::new();
-                metadata.insert("shannon_entropy".to_string(), entropy_result.shannon_entropy.to_string());
-                metadata.insert("normalized_entropy".to_string(), entropy_result.normalized_entropy.to_string());
-                metadata.insert("charset_size".to_string(), entropy_result.charset_size.to_string());
+                metadata.insert(
+                    "shannon_entropy".to_string(),
+                    entropy_result.shannon_entropy.to_string(),
+                );
+                metadata.insert(
+                    "normalized_entropy".to_string(),
+                    entropy_result.normalized_entropy.to_string(),
+                );
+                metadata.insert(
+                    "charset_size".to_string(),
+                    entropy_result.charset_size.to_string(),
+                );
 
                 RuleMatch {
                     matched_text: substring,
@@ -235,7 +251,7 @@ impl CustomRule {
         require_high_entropy: bool,
     ) -> CryptoResult<Vec<RuleMatch>> {
         use crate::detection::entropy::utils::has_high_entropy;
-        
+
         let mut matches = Vec::new();
         let text_lower = text.to_lowercase();
 
@@ -246,7 +262,8 @@ impl CustomRule {
             while let Some(pos) = text_lower[start_pos..].find(&keyword_lower) {
                 let actual_pos = start_pos + pos;
                 let context_start = actual_pos.saturating_sub(context_radius);
-                let context_end = std::cmp::min(actual_pos + keyword.len() + context_radius, text.len());
+                let context_end =
+                    std::cmp::min(actual_pos + keyword.len() + context_radius, text.len());
                 let context = &text[context_start..context_end];
 
                 // Check if high entropy is required
@@ -428,14 +445,15 @@ impl RuleEngine {
 
     /// Get enabled rules only
     pub fn enabled_rules(&self) -> Vec<&CustomRule> {
-        self.rules
-            .values()
-            .filter(|rule| rule.enabled)
-            .collect()
+        self.rules.values().filter(|rule| rule.enabled).collect()
     }
 
     /// Execute all enabled rules against text
-    pub fn execute_rules(&self, text: &str, file_path: Option<&str>) -> CryptoResult<Vec<RuleMatch>> {
+    pub fn execute_rules(
+        &self,
+        text: &str,
+        file_path: Option<&str>,
+    ) -> CryptoResult<Vec<RuleMatch>> {
         if !self.enabled {
             return Ok(Vec::new());
         }
@@ -466,25 +484,25 @@ impl RuleEngine {
     fn create_rule_from_config(&self, config: &RuleConfigItem) -> CryptoResult<CustomRule> {
         let rule_type = match config.rule_type.as_str() {
             "regex" => {
-                let pattern = config.pattern.as_ref()
-                    .ok_or_else(|| CargoCryptError::detection_error("Regex rule requires 'pattern' field"))?;
-                
+                let pattern = config.pattern.as_ref().ok_or_else(|| {
+                    CargoCryptError::detection_error("Regex rule requires 'pattern' field")
+                })?;
+
                 RuleType::Regex {
                     pattern: pattern.clone(),
                     case_sensitive: config.case_sensitive.unwrap_or(true),
                 }
             }
-            "entropy" => {
-                RuleType::Entropy {
-                    min_entropy: config.min_entropy.unwrap_or(4.0),
-                    min_length: config.min_length.unwrap_or(8),
-                    max_length: config.max_length.unwrap_or(100),
-                }
-            }
+            "entropy" => RuleType::Entropy {
+                min_entropy: config.min_entropy.unwrap_or(4.0),
+                min_length: config.min_length.unwrap_or(8),
+                max_length: config.max_length.unwrap_or(100),
+            },
             "keyword" => {
-                let keywords = config.keywords.as_ref()
-                    .ok_or_else(|| CargoCryptError::detection_error("Keyword rule requires 'keywords' field"))?;
-                
+                let keywords = config.keywords.as_ref().ok_or_else(|| {
+                    CargoCryptError::detection_error("Keyword rule requires 'keywords' field")
+                })?;
+
                 RuleType::Keyword {
                     keywords: keywords.clone(),
                     context_radius: config.context_radius.unwrap_or(20),
@@ -493,7 +511,8 @@ impl RuleEngine {
             }
             _ => {
                 return Err(CargoCryptError::detection_error(&format!(
-                    "Unknown rule type: {}", config.rule_type
+                    "Unknown rule type: {}",
+                    config.rule_type
                 )));
             }
         };
@@ -535,16 +554,16 @@ pub struct RuleConfigItem {
     pub rule_type: String,
     pub secret_type: Option<String>,
     pub confidence: Option<f64>,
-    
+
     // Regex rule fields
     pub pattern: Option<String>,
     pub case_sensitive: Option<bool>,
-    
+
     // Entropy rule fields
     pub min_entropy: Option<f64>,
     pub min_length: Option<usize>,
     pub max_length: Option<usize>,
-    
+
     // Keyword rule fields
     pub keywords: Option<Vec<String>>,
     pub context_radius: Option<usize>,
@@ -590,7 +609,9 @@ mod tests {
             0.7,
         );
 
-        let matches = rule.matches("hello AKIAIOSFODNN7EXAMPLE world", None).unwrap();
+        let matches = rule
+            .matches("hello AKIAIOSFODNN7EXAMPLE world", None)
+            .unwrap();
         assert!(!matches.is_empty());
     }
 
@@ -617,7 +638,7 @@ mod tests {
     #[test]
     fn test_rule_engine() {
         let mut engine = RuleEngine::new();
-        
+
         let rule = CustomRule::new(
             "test_rule".to_string(),
             "Test Rule".to_string(),
@@ -631,8 +652,10 @@ mod tests {
         );
 
         engine.add_rule(rule);
-        
-        let matches = engine.execute_rules("This is secret_key and SECRET_TOKEN", None).unwrap();
+
+        let matches = engine
+            .execute_rules("This is secret_key and SECRET_TOKEN", None)
+            .unwrap();
         assert_eq!(matches.len(), 2);
     }
 }

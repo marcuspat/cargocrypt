@@ -4,18 +4,18 @@
 //! all detection components (patterns, entropy analysis, custom rules, and file scanning).
 
 use crate::detection::{
-    Finding, 
-    findings::FindingCollection, 
-    patterns::PatternRegistry, 
-    entropy::EntropyAnalyzer, 
-    rules::RuleEngine, 
+    entropy::EntropyAnalyzer,
+    findings::FindingCollection,
+    patterns::PatternRegistry,
+    rules::RuleEngine,
     scanner::{FileScanner, ScanConfig},
+    Finding,
 };
 use crate::error::{CargoCryptError, CryptoResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 /// Configuration for the secret detector
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,8 +180,7 @@ impl SecretDetector {
 
     /// Create a secret detector with custom configuration
     pub fn with_config(config: DetectionConfig) -> Self {
-        let pattern_registry = PatternRegistry::new()
-            .expect("Failed to create pattern registry");
+        let pattern_registry = PatternRegistry::new().expect("Failed to create pattern registry");
         let entropy_analyzer = EntropyAnalyzer::new();
         let rule_engine = RuleEngine::new();
 
@@ -214,12 +213,16 @@ impl SecretDetector {
     }
 
     /// Scan a single file for secrets
-    pub async fn scan_file<P: AsRef<Path>>(&self, path: P, options: &ScanOptions) -> CryptoResult<Vec<Finding>> {
+    pub async fn scan_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        options: &ScanOptions,
+    ) -> CryptoResult<Vec<Finding>> {
         let start_time = Instant::now();
         let path = path.as_ref();
-        
+
         info!("Scanning file: {}", path.display());
-        
+
         // Create file scanner
         let scanner = FileScanner::with_components(
             self.pattern_registry.clone(),
@@ -230,10 +233,15 @@ impl SecretDetector {
 
         // Scan the file
         let scan_result = scanner.scan_file(path)?;
-        
+
         if scan_result.skipped {
-            warn!("Skipped file {}: {}", path.display(), 
-                  scan_result.skip_reason.unwrap_or_else(|| "Unknown reason".to_string()));
+            warn!(
+                "Skipped file {}: {}",
+                path.display(),
+                scan_result
+                    .skip_reason
+                    .unwrap_or_else(|| "Unknown reason".to_string())
+            );
             return Ok(Vec::new());
         }
 
@@ -242,17 +250,25 @@ impl SecretDetector {
         self.post_process_findings(&mut findings, options);
 
         let scan_time = start_time.elapsed();
-        debug!("Scanned {} in {:.2}ms, found {} findings", 
-               path.display(), scan_time.as_millis(), findings.len());
+        debug!(
+            "Scanned {} in {:.2}ms, found {} findings",
+            path.display(),
+            scan_time.as_millis(),
+            findings.len()
+        );
 
         Ok(findings)
     }
 
     /// Scan a directory for secrets
-    pub async fn scan_directory<P: AsRef<Path>>(&self, path: P, options: &ScanOptions) -> CryptoResult<Vec<Finding>> {
+    pub async fn scan_directory<P: AsRef<Path>>(
+        &self,
+        path: P,
+        options: &ScanOptions,
+    ) -> CryptoResult<Vec<Finding>> {
         let start_time = Instant::now();
         let path = path.as_ref();
-        
+
         info!("Scanning directory: {}", path.display());
 
         // Create file scanner
@@ -265,7 +281,7 @@ impl SecretDetector {
 
         // Scan the directory
         let scan_results = scanner.scan_directory(path)?;
-        
+
         // Collect all findings
         let mut all_findings = Vec::new();
         let mut files_scanned = 0;
@@ -287,8 +303,13 @@ impl SecretDetector {
         self.post_process_findings(&mut all_findings, options);
 
         let scan_time = start_time.elapsed();
-        info!("Scanned {} files ({} skipped) in {:.2}s, found {} findings",
-              files_scanned, files_skipped, scan_time.as_secs_f64(), all_findings.len());
+        info!(
+            "Scanned {} files ({} skipped) in {:.2}s, found {} findings",
+            files_scanned,
+            files_skipped,
+            scan_time.as_secs_f64(),
+            all_findings.len()
+        );
 
         Ok(all_findings)
     }
@@ -296,7 +317,7 @@ impl SecretDetector {
     /// Scan text content directly
     pub fn scan_content(&self, content: &str, source_name: &str) -> CryptoResult<Vec<Finding>> {
         let start_time = Instant::now();
-        
+
         debug!("Scanning content from: {}", source_name);
 
         // Create a temporary file scanner
@@ -311,14 +332,21 @@ impl SecretDetector {
         let findings = scanner.scan_content(content, Path::new(source_name))?;
 
         let scan_time = start_time.elapsed();
-        debug!("Scanned content in {:.2}ms, found {} findings", 
-               scan_time.as_millis(), findings.len());
+        debug!(
+            "Scanned content in {:.2}ms, found {} findings",
+            scan_time.as_millis(),
+            findings.len()
+        );
 
         Ok(findings)
     }
 
     /// Generate a comprehensive scan report
-    pub async fn generate_report<P: AsRef<Path>>(&self, path: P, options: &ScanOptions) -> CryptoResult<DetectionReport> {
+    pub async fn generate_report<P: AsRef<Path>>(
+        &self,
+        path: P,
+        options: &ScanOptions,
+    ) -> CryptoResult<DetectionReport> {
         let start_time = Instant::now();
         let path = path.as_ref();
 
@@ -372,9 +400,7 @@ impl SecretDetector {
         }
 
         // Remove duplicates (same secret value in same file)
-        findings.dedup_by(|a, b| {
-            a.file_path == b.file_path && a.secret.value == b.secret.value
-        });
+        findings.dedup_by(|a, b| a.file_path == b.file_path && a.secret.value == b.secret.value);
     }
 
     /// Validate a potential secret (can be extended with API calls, etc.)
@@ -398,7 +424,7 @@ impl SecretDetector {
         // 1. Check key format more thoroughly
         // 2. Make an AWS API call to validate (if safe to do so)
         // 3. Check against known invalid patterns
-        
+
         // For now, just return true as this is handled by patterns
         true
     }
@@ -408,7 +434,7 @@ impl SecretDetector {
         // In a real implementation, you might:
         // 1. Make a GitHub API call to validate (if safe to do so)
         // 2. Check token format more thoroughly
-        
+
         // For now, just return true as this is handled by patterns
         true
     }
@@ -456,21 +482,26 @@ impl DetectionReport {
         self.findings
             .findings
             .iter()
-            .filter(|f| f.confidence >= 0.9 || f.secret.secret_type.contains("AWS") || f.secret.secret_type.contains("Private Key"))
+            .filter(|f| {
+                f.confidence >= 0.9
+                    || f.secret.secret_type.contains("AWS")
+                    || f.secret.secret_type.contains("Private Key")
+            })
             .collect()
     }
 
     /// Export report to JSON
     pub fn to_json(&self) -> CryptoResult<String> {
-        serde_json::to_string_pretty(self)
-            .map_err(|e| CargoCryptError::detection_error(&format!("Failed to serialize report: {}", e)))
+        serde_json::to_string_pretty(self).map_err(|e| {
+            CargoCryptError::detection_error(&format!("Failed to serialize report: {}", e))
+        })
     }
 
     /// Export report to CSV (findings only)
     pub fn to_csv(&self) -> CryptoResult<String> {
         let mut csv = String::new();
         csv.push_str("File,Type,Line,Confidence,Value\n");
-        
+
         for finding in &self.findings.findings {
             csv.push_str(&format!(
                 "{},{},{},{:.2},{}\n",
@@ -489,8 +520,8 @@ impl DetectionReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_detector_creation() {
@@ -515,10 +546,10 @@ mod tests {
     async fn test_scan_content() {
         let detector = SecretDetector::new();
         let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\npassword=very_secret_password";
-        
+
         let findings = detector.scan_content(content, "test.env").unwrap();
         assert!(!findings.is_empty());
-        
+
         // Should find the AWS key
         assert!(findings.iter().any(|f| f.secret.value.contains("AKIA")));
     }
@@ -537,22 +568,32 @@ mod tests {
         // Create a temporary directory with test files
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("config.env");
-        
-        fs::write(&test_file, "SECRET_KEY=sk_test_1234567890abcdef1234567890abcdef").unwrap();
-        
+
+        fs::write(
+            &test_file,
+            "SECRET_KEY=sk_test_1234567890abcdef1234567890abcdef",
+        )
+        .unwrap();
+
         let detector = SecretDetector::new();
         let options = ScanOptions::for_config_files();
-        
+
         // Test file scanning
         let findings = detector.scan_file(&test_file, &options).await.unwrap();
         assert!(!findings.is_empty());
-        
+
         // Test directory scanning
-        let findings = detector.scan_directory(temp_dir.path(), &options).await.unwrap();
+        let findings = detector
+            .scan_directory(temp_dir.path(), &options)
+            .await
+            .unwrap();
         assert!(!findings.is_empty());
-        
+
         // Test report generation
-        let report = detector.generate_report(temp_dir.path(), &options).await.unwrap();
+        let report = detector
+            .generate_report(temp_dir.path(), &options)
+            .await
+            .unwrap();
         assert!(!report.findings.findings.is_empty());
         assert!(report.scan_time_ms > 0);
     }

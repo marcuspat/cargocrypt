@@ -15,46 +15,46 @@ pub enum SecretType {
     AwsSecretKey,
     AwsSessionToken,
     AwsMwsKey,
-    
+
     // GitHub Credentials
     GitHubToken,
     GitHubAppToken,
     GitHubRefreshToken,
     GitHubOAuthToken,
-    
+
     // SSH Keys
     SshPrivateKey,
     SshPublicKey,
-    
+
     // Database Credentials
     DatabaseUrl,
     PostgresUrl,
     MySqlUrl,
     MongoDbUrl,
     RedisUrl,
-    
+
     // API Keys
     StripeApiKey,
     SendGridApiKey,
     TwilioApiKey,
     SlackToken,
     DiscordToken,
-    
+
     // JWT and Bearer Tokens
     JwtToken,
     BearerToken,
-    
+
     // Private Keys
     RsaPrivateKey,
     EcPrivateKey,
     PgpPrivateKey,
-    
+
     // Generic High-Entropy
     HighEntropyString,
-    
+
     // Environment Variables
     EnvironmentSecret,
-    
+
     // Custom patterns
     Custom(String),
 }
@@ -99,26 +99,26 @@ impl SecretType {
         match self {
             // Critical - direct access to cloud resources
             SecretType::AwsAccessKey | SecretType::AwsSecretKey | SecretType::AwsSessionToken => 10,
-            
+
             // High - can access repositories or sensitive APIs
             SecretType::GitHubToken | SecretType::GitHubAppToken => 9,
             SecretType::SshPrivateKey | SecretType::RsaPrivateKey | SecretType::EcPrivateKey => 9,
             SecretType::DatabaseUrl | SecretType::PostgresUrl | SecretType::MySqlUrl => 9,
-            
+
             // Medium-High - API access
             SecretType::StripeApiKey | SecretType::SendGridApiKey | SecretType::TwilioApiKey => 8,
             SecretType::SlackToken | SecretType::DiscordToken => 7,
-            
+
             // Medium - authentication tokens
             SecretType::JwtToken | SecretType::BearerToken => 6,
             SecretType::GitHubOAuthToken | SecretType::GitHubRefreshToken => 6,
-            
+
             // Lower - less direct access
             SecretType::MongoDbUrl | SecretType::RedisUrl => 5,
             SecretType::SshPublicKey => 3,
             SecretType::AwsMwsKey => 7,
             SecretType::PgpPrivateKey => 8,
-            
+
             // Variable - depends on context
             SecretType::HighEntropyString => 4,
             SecretType::EnvironmentSecret => 5,
@@ -176,7 +176,7 @@ impl SecretPattern {
         confidence: f64,
     ) -> Result<Self, regex::Error> {
         let regex = Regex::new(pattern)?;
-        
+
         Ok(Self {
             name: name.to_string(),
             pattern: regex,
@@ -235,18 +235,20 @@ impl SecretPattern {
 
         // Decrease confidence for ignore keywords
         for keyword in &self.ignore_keywords {
-            if context_lower.contains(&keyword.to_lowercase()) || 
-               matched_lower.contains(&keyword.to_lowercase()) {
+            if context_lower.contains(&keyword.to_lowercase())
+                || matched_lower.contains(&keyword.to_lowercase())
+            {
                 confidence -= 0.2;
             }
         }
 
         // Special adjustments for common false positives
-        if matched_lower.contains("example") || 
-           matched_lower.contains("sample") ||
-           matched_lower.contains("test") ||
-           matched_lower.contains("placeholder") ||
-           matched_lower.contains("dummy") {
+        if matched_lower.contains("example")
+            || matched_lower.contains("sample")
+            || matched_lower.contains("test")
+            || matched_lower.contains("placeholder")
+            || matched_lower.contains("dummy")
+        {
             confidence -= 0.3;
         }
 
@@ -278,7 +280,7 @@ impl PatternRegistry {
     pub fn add_pattern(&mut self, pattern: SecretPattern) {
         let secret_type = pattern.secret_type.clone();
         let index = self.patterns.len();
-        
+
         self.patterns.push(pattern);
         self.patterns_by_type
             .entry(secret_type)
@@ -295,19 +297,14 @@ impl PatternRegistry {
     pub fn patterns_for_type(&self, secret_type: &SecretType) -> Vec<&SecretPattern> {
         self.patterns_by_type
             .get(secret_type)
-            .map(|indices| {
-                indices
-                    .iter()
-                    .map(|&i| &self.patterns[i])
-                    .collect()
-            })
+            .map(|indices| indices.iter().map(|&i| &self.patterns[i]).collect())
             .unwrap_or_default()
     }
 
     /// Find all matches in text
     pub fn find_all_matches(&self, text: &str) -> Vec<PatternMatch> {
         let mut matches = Vec::new();
-        
+
         for pattern in &self.patterns {
             matches.extend(pattern.find_matches(text));
         }
@@ -321,25 +318,25 @@ impl PatternRegistry {
     fn load_builtin_patterns(&mut self) -> Result<(), regex::Error> {
         // AWS Patterns
         self.add_aws_patterns()?;
-        
+
         // GitHub Patterns
         self.add_github_patterns()?;
-        
+
         // SSH Key Patterns
         self.add_ssh_patterns()?;
-        
+
         // Database Patterns
         self.add_database_patterns()?;
-        
+
         // API Key Patterns
         self.add_api_key_patterns()?;
-        
+
         // JWT and Token Patterns
         self.add_token_patterns()?;
-        
+
         // Private Key Patterns
         self.add_private_key_patterns()?;
-        
+
         // Environment Variable Patterns
         self.add_env_patterns()?;
 
@@ -348,28 +345,31 @@ impl PatternRegistry {
 
     fn add_aws_patterns(&mut self) -> Result<(), regex::Error> {
         // AWS Access Key ID
-        self.add_pattern(SecretPattern::new(
-            "AWS Access Key ID",
-            r"(?i)(AKIA[0-9A-Z]{16})",
-            SecretType::AwsAccessKey,
-            0.95,
-        )?.with_context_keywords(vec![
-            "aws".to_string(),
-            "amazon".to_string(),
-            "access".to_string(),
-            "key".to_string(),
-        ]));
+        self.add_pattern(
+            SecretPattern::new(
+                "AWS Access Key ID",
+                r"(?i)(AKIA[0-9A-Z]{16})",
+                SecretType::AwsAccessKey,
+                0.95,
+            )?
+            .with_context_keywords(vec![
+                "aws".to_string(),
+                "amazon".to_string(),
+                "access".to_string(),
+                "key".to_string(),
+            ]),
+        );
 
         // AWS Secret Access Key
-        self.add_pattern(SecretPattern::new(
-            "AWS Secret Access Key",
-            r"(?i)(aws_secret_access_key|aws_secret_key)\s*[:=]\s*([A-Za-z0-9/+=]{40})",
-            SecretType::AwsSecretKey,
-            0.90,
-        )?.with_context_keywords(vec![
-            "secret".to_string(),
-            "aws".to_string(),
-        ]));
+        self.add_pattern(
+            SecretPattern::new(
+                "AWS Secret Access Key",
+                r"(?i)(aws_secret_access_key|aws_secret_key)\s*[:=]\s*([A-Za-z0-9/+=]{40})",
+                SecretType::AwsSecretKey,
+                0.90,
+            )?
+            .with_context_keywords(vec!["secret".to_string(), "aws".to_string()]),
+        );
 
         // AWS Session Token
         self.add_pattern(SecretPattern::new(
@@ -384,28 +384,34 @@ impl PatternRegistry {
 
     fn add_github_patterns(&mut self) -> Result<(), regex::Error> {
         // GitHub Personal Access Token
-        self.add_pattern(SecretPattern::new(
-            "GitHub Personal Access Token",
-            r"(?i)gh[pousr]_[A-Za-z0-9_]{36,255}",
-            SecretType::GitHubToken,
-            0.95,
-        )?.with_context_keywords(vec![
-            "github".to_string(),
-            "token".to_string(),
-            "pat".to_string(),
-        ]));
+        self.add_pattern(
+            SecretPattern::new(
+                "GitHub Personal Access Token",
+                r"(?i)gh[pousr]_[A-Za-z0-9_]{36,255}",
+                SecretType::GitHubToken,
+                0.95,
+            )?
+            .with_context_keywords(vec![
+                "github".to_string(),
+                "token".to_string(),
+                "pat".to_string(),
+            ]),
+        );
 
         // Classic GitHub Token
-        self.add_pattern(SecretPattern::new(
-            "GitHub Classic Token",
-            r"(?i)[a-f0-9]{40}",
-            SecretType::GitHubToken,
-            0.7, // Lower confidence, needs context
-        )?.with_context_keywords(vec![
-            "github".to_string(),
-            "token".to_string(),
-            "oauth".to_string(),
-        ]));
+        self.add_pattern(
+            SecretPattern::new(
+                "GitHub Classic Token",
+                r"(?i)[a-f0-9]{40}",
+                SecretType::GitHubToken,
+                0.7, // Lower confidence, needs context
+            )?
+            .with_context_keywords(vec![
+                "github".to_string(),
+                "token".to_string(),
+                "oauth".to_string(),
+            ]),
+        );
 
         Ok(())
     }
@@ -552,18 +558,21 @@ impl PatternRegistry {
 
     fn add_env_patterns(&mut self) -> Result<(), regex::Error> {
         // Environment variables with secret-like names
-        self.add_pattern(SecretPattern::new(
-            "Environment Secret",
-            r"(?i)(api_key|secret|password|token|auth|credential)\s*[:=]\s*[A-Za-z0-9/+=]{8,}",
-            SecretType::EnvironmentSecret,
-            0.6,
-        )?.with_ignore_keywords(vec![
-            "example".to_string(),
-            "test".to_string(),
-            "placeholder".to_string(),
-            "your_".to_string(),
-            "my_".to_string(),
-        ]));
+        self.add_pattern(
+            SecretPattern::new(
+                "Environment Secret",
+                r"(?i)(api_key|secret|password|token|auth|credential)\s*[:=]\s*[A-Za-z0-9/+=]{8,}",
+                SecretType::EnvironmentSecret,
+                0.6,
+            )?
+            .with_ignore_keywords(vec![
+                "example".to_string(),
+                "test".to_string(),
+                "placeholder".to_string(),
+                "your_".to_string(),
+                "my_".to_string(),
+            ]),
+        );
 
         Ok(())
     }
@@ -593,7 +602,8 @@ mod tests {
             r"test_[0-9]+",
             SecretType::Custom("test".to_string()),
             0.8,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(pattern.name, "Test Pattern");
         assert_eq!(pattern.confidence, 0.8);
@@ -604,9 +614,11 @@ mod tests {
         let registry = PatternRegistry::new().unwrap();
         let text = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
         let matches = registry.find_all_matches(text);
-        
+
         assert!(!matches.is_empty());
-        assert!(matches.iter().any(|m| matches!(m.secret_type, SecretType::AwsAccessKey)));
+        assert!(matches
+            .iter()
+            .any(|m| matches!(m.secret_type, SecretType::AwsAccessKey)));
     }
 
     #[test]
@@ -614,9 +626,11 @@ mod tests {
         let registry = PatternRegistry::new().unwrap();
         let text = "GITHUB_TOKEN=ghp_1234567890abcdef1234567890abcdef12345678";
         let matches = registry.find_all_matches(text);
-        
+
         assert!(!matches.is_empty());
-        assert!(matches.iter().any(|m| matches!(m.secret_type, SecretType::GitHubToken)));
+        assert!(matches
+            .iter()
+            .any(|m| matches!(m.secret_type, SecretType::GitHubToken)));
     }
 
     #[test]
@@ -626,7 +640,8 @@ mod tests {
             r"test_[0-9]+",
             SecretType::Custom("test".to_string()),
             0.8,
-        ).unwrap()
+        )
+        .unwrap()
         .with_ignore_keywords(vec!["example".to_string()]);
 
         // Should decrease confidence for example

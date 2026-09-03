@@ -127,7 +127,7 @@ impl Finding {
         detector_name: String,
     ) -> Self {
         let confidence_level = ConfidenceLevel::from_score(confidence);
-        
+
         Self {
             file_path,
             secret,
@@ -242,9 +242,17 @@ impl FindingCollection {
     pub fn add_finding(&mut self, finding: Finding) {
         // Update statistics
         let confidence_key = format!("{:?}", finding.confidence_level);
-        *self.stats.findings_by_confidence.entry(confidence_key).or_insert(0) += 1;
-        *self.stats.findings_by_type.entry(finding.secret.secret_type.clone()).or_insert(0) += 1;
-        
+        *self
+            .stats
+            .findings_by_confidence
+            .entry(confidence_key)
+            .or_insert(0) += 1;
+        *self
+            .stats
+            .findings_by_type
+            .entry(finding.secret.secret_type.clone())
+            .or_insert(0) += 1;
+
         self.findings.push(finding);
     }
 
@@ -266,15 +274,13 @@ impl FindingCollection {
 
     /// Get findings that should be reported
     pub fn reportable_findings(&self) -> Vec<&Finding> {
-        self.findings
-            .iter()
-            .filter(|f| f.should_report())
-            .collect()
+        self.findings.iter().filter(|f| f.should_report()).collect()
     }
 
     /// Sort findings by confidence (highest first)
     pub fn sort_by_confidence(&mut self) {
-        self.findings.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        self.findings
+            .sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
     }
 
     /// Get summary statistics
@@ -307,15 +313,8 @@ mod tests {
     #[test]
     fn test_found_secret_truncation() {
         let long_secret = "a".repeat(100);
-        let secret = FoundSecret::new(
-            long_secret.clone(),
-            "test".to_string(),
-            0,
-            100,
-            1,
-            1,
-        );
-        
+        let secret = FoundSecret::new(long_secret.clone(), "test".to_string(), 0, 100, 1, 1);
+
         assert!(secret.is_truncated);
         assert!(secret.value.ends_with("..."));
         assert_eq!(secret.length(), 100);
@@ -331,7 +330,7 @@ mod tests {
             1,
             1,
         );
-        
+
         let finding = Finding::new(
             PathBuf::from("test.rs"),
             secret,
@@ -347,12 +346,22 @@ mod tests {
     #[test]
     fn test_finding_collection() {
         let mut collection = FindingCollection::new();
-        
+
         let secret1 = FoundSecret::new("secret1".to_string(), "api_key".to_string(), 0, 7, 1, 1);
-        let finding1 = Finding::new(PathBuf::from("test1.rs"), secret1, 0.9, "detector1".to_string());
-        
+        let finding1 = Finding::new(
+            PathBuf::from("test1.rs"),
+            secret1,
+            0.9,
+            "detector1".to_string(),
+        );
+
         let secret2 = FoundSecret::new("secret2".to_string(), "token".to_string(), 0, 7, 1, 1);
-        let finding2 = Finding::new(PathBuf::from("test2.rs"), secret2, 0.5, "detector2".to_string());
+        let finding2 = Finding::new(
+            PathBuf::from("test2.rs"),
+            secret2,
+            0.5,
+            "detector2".to_string(),
+        );
 
         collection.add_finding(finding1);
         collection.add_finding(finding2);
