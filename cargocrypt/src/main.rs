@@ -132,7 +132,7 @@ async fn main() -> CryptoResult<()> {
                 let mut password = String::new();
                 handle
                     .read_line(&mut password)
-                    .map_err(|e| CargoCryptError::from(e))?;
+                    .map_err(CargoCryptError::from)?;
                 password.trim().to_string()
             } else {
                 // Prompt for password with confirmation
@@ -163,7 +163,7 @@ async fn main() -> CryptoResult<()> {
                 let mut password = String::new();
                 handle
                     .read_line(&mut password)
-                    .map_err(|e| CargoCryptError::from(e))?;
+                    .map_err(CargoCryptError::from)?;
                 password.trim().to_string()
             } else {
                 // Prompt for password
@@ -261,13 +261,13 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
             let mut input = Vec::new();
             io::stdin()
                 .read_to_end(&mut input)
-                .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                .map_err(cargocrypt::error::CargoCryptError::from)?;
 
             // Get password from git config or environment
             let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
                 // Try to read from git config
                 std::process::Command::new("git")
-                    .args(&["config", "--get", "cargocrypt.password"])
+                    .args(["config", "--get", "cargocrypt.password"])
                     .output()
                     .ok()
                     .and_then(|output| {
@@ -294,7 +294,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
             })?;
             io::stdout()
                 .write_all(&encrypted_bytes)
-                .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                .map_err(cargocrypt::error::CargoCryptError::from)?;
         }
         GitCommands::FilterSmudge { .. } => {
             // This is called by git during checkout
@@ -305,13 +305,13 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
             let mut input = Vec::new();
             io::stdin()
                 .read_to_end(&mut input)
-                .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                .map_err(cargocrypt::error::CargoCryptError::from)?;
 
             // Get password from git config or environment
             let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
                 // Try to read from git config
                 std::process::Command::new("git")
-                    .args(&["config", "--get", "cargocrypt.password"])
+                    .args(["config", "--get", "cargocrypt.password"])
                     .output()
                     .ok()
                     .and_then(|output| {
@@ -335,13 +335,13 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
                         Ok(decrypted) => {
                             io::stdout()
                                 .write_all(&decrypted)
-                                .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                                .map_err(cargocrypt::error::CargoCryptError::from)?;
                         }
                         Err(_) => {
                             // If decryption fails, output original (might not be encrypted)
                             io::stdout()
                                 .write_all(&input)
-                                .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                                .map_err(cargocrypt::error::CargoCryptError::from)?;
                         }
                     }
                 }
@@ -349,7 +349,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
                     // If deserialization fails, output original (not encrypted)
                     io::stdout()
                         .write_all(&input)
-                        .map_err(|e| cargocrypt::error::CargoCryptError::from(e))?;
+                        .map_err(cargocrypt::error::CargoCryptError::from)?;
                 }
             }
         }
@@ -442,12 +442,10 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
             // Create and run monitoring dashboard
             use cargocrypt::tui::monitoring::MonitoringDashboard;
             let mut dashboard = MonitoringDashboard::new(monitoring);
-            dashboard.run().await.map_err(|e| {
-                CargoCryptError::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?
+            dashboard
+                .run()
+                .await
+                .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?
         }
 
         MonitorCommands::Server { port, host } => {
@@ -467,12 +465,10 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
             println!("Press Ctrl+C to stop");
 
             let server = MonitoringServer::new(monitoring, addr);
-            server.start().await.map_err(|e| {
-                CargoCryptError::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?;
+            server
+                .start()
+                .await
+                .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?;
         }
 
         MonitorCommands::Alerts => {

@@ -8,15 +8,15 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use std::{
     collections::HashSet,
-    fs::{self, DirEntry},
+    fs::{self},
     io,
     path::PathBuf,
     sync::Arc,
@@ -77,10 +77,10 @@ impl TuiApp {
 
         // Read directory entries
         let entries =
-            fs::read_dir(&self.current_path).map_err(|e| crate::error::CargoCryptError::from(e))?;
+            fs::read_dir(&self.current_path).map_err(crate::error::CargoCryptError::from)?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| crate::error::CargoCryptError::from(e))?;
+            let entry = entry.map_err(crate::error::CargoCryptError::from)?;
             let path = entry.path();
 
             let name = path
@@ -129,7 +129,7 @@ impl TuiApp {
         if path.is_dir() {
             self.current_path = path
                 .canonicalize()
-                .map_err(|e| crate::error::CargoCryptError::from(e))?;
+                .map_err(crate::error::CargoCryptError::from)?;
             self.refresh_files()?;
         }
         Ok(())

@@ -904,7 +904,7 @@ impl MonitoringManager {
     /// Get comprehensive health check
     pub async fn health_check(&self) -> HealthCheck {
         let metrics = self.get_metrics().await;
-        let performance_stats = self.get_performance_stats().await;
+        let _performance_stats = self.get_performance_stats().await;
         let performance_tracker = self.performance_tracker.read().await;
 
         let alerts = performance_tracker.detect_bottlenecks();
@@ -1062,7 +1062,7 @@ mod tests {
 
 /// HTTP monitoring server module
 pub mod server {
-    use super::{HealthCheck, MonitoringManager};
+    use super::MonitoringManager;
     use serde_json;
     use std::net::SocketAddr;
     use std::sync::Arc;
@@ -1109,7 +1109,7 @@ pub mod server {
         mut stream: tokio::net::TcpStream,
         monitoring: Arc<MonitoringManager>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::AsyncReadExt;
 
         let mut buffer = [0; 1024];
         let bytes_read = stream.read(&mut buffer).await?;

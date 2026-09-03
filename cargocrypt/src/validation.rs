@@ -33,6 +33,12 @@ pub enum ValidationSeverity {
     Info,     // Informational only
 }
 
+impl Default for ValidationResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ValidationResult {
     pub fn new() -> Self {
         Self {

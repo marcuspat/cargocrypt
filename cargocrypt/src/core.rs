@@ -5,10 +5,7 @@
 
 use crate::crypto::{CryptoEngine, MemorySecretStore, PerformanceProfile, SecretStore};
 use crate::error::{CargoCryptError, CryptoResult};
-use crate::monitoring::{
-    CryptoOperation, CryptoOperationType, FileOperation, FileOperationType, MonitoringConfig,
-    MonitoringManager, PerformanceTracker,
-};
+use crate::monitoring::{MonitoringConfig, MonitoringManager};
 use crate::resilience::{CircuitBreaker, GracefulDegradation, HealthStatus, RetryPolicy};
 use crate::validation::{InputValidator, ValidationResult};
 use serde::{Deserialize, Serialize};
@@ -16,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secure bytes wrapper that zeroizes memory on drop
@@ -27,6 +24,7 @@ pub struct SecretBytes {
 
 impl SecretBytes {
     /// Create from a string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self {
             inner: s.as_bytes().to_vec(),
@@ -62,8 +60,10 @@ pub struct CargoCrypt {
     /// Configuration settings
     config: Arc<RwLock<CryptoConfig>>,
     /// Project root directory
+    #[allow(dead_code)]
     project_root: PathBuf,
     /// Secret store for memory-safe secret management
+    #[allow(dead_code)]
     secret_store: Arc<dyn SecretStore>,
     /// Resilience manager for error handling and recovery
     resilience: ResilienceManager,
@@ -306,7 +306,7 @@ impl ResilienceManager {
                 // For transient errors, try with retry policy
                 if error.is_recoverable() {
                     info!("Retrying file operation due to transient error: {}", error);
-                    self.retry_policy.execute(|| operation()).await
+                    self.retry_policy.execute(operation).await
                 } else {
                     Err(error)
                 }
@@ -328,7 +328,7 @@ impl ResilienceManager {
             });
         }
 
-        match self.crypto_breaker.execute(|| operation()).await {
+        match self.crypto_breaker.execute(operation).await {
             Ok(result) => Ok(result),
             Err(_breaker_error) => {
                 warn!("Circuit breaker triggered for crypto operations");
@@ -516,7 +516,7 @@ impl CargoCrypt {
         path: P,
         password: &str,
     ) -> CryptoResult<PathBuf> {
-        use crate::crypto::{EncryptionOptions, PlaintextSecret};
+        use crate::crypto::PlaintextSecret;
 
         let path = path.as_ref().to_path_buf();
         let path_str = path.to_string_lossy().to_string();
@@ -565,7 +565,7 @@ impl CargoCrypt {
         let config = self.config.read().await;
 
         // Execute file operations with resilience protection
-        let path_clone = path.clone();
+        let _path_clone = path.clone();
         let file_content = {
             let path_str_clone = path_str.clone();
             let path_for_read = path.clone();
@@ -577,7 +577,7 @@ impl CargoCrypt {
                         info!("Reading file for encryption: {}", path_str);
                         let content = tokio::fs::read(&path_clone)
                             .await
-                            .map_err(|e| CargoCryptError::from(e))?;
+                            .map_err(CargoCryptError::from)?;
 
                         // Validate file content
                         let filename = path_clone
@@ -602,7 +602,7 @@ impl CargoCrypt {
 
         // Execute crypto operations with circuit breaker protection
         let password_str = password.to_string();
-        let engine_clone = Arc::clone(&self.engine);
+        let _engine_clone = Arc::clone(&self.engine);
         let encrypted = {
             info!("Encrypting file content");
             self.engine
@@ -612,7 +612,7 @@ impl CargoCrypt {
                     crate::crypto::EncryptionOptions::default(),
                 )
                 .await
-                .map_err(|e| CargoCryptError::from(e))?
+                .map_err(CargoCryptError::from)?
         };
 
         // Create encrypted file path
@@ -637,21 +637,21 @@ impl CargoCrypt {
                         info!("Writing encrypted file: {}", encrypted_path_clone.display());
                         let encrypted_bytes = encrypted_bytes_result
                             .to_bytes()
-                            .map_err(|e| CargoCryptError::from(e))?;
+                            .map_err(CargoCryptError::from)?;
 
                         // Atomic operation: write to temp file first, then move
                         if atomic_ops {
                             let temp_path = encrypted_path_clone.with_extension("tmp");
                             tokio::fs::write(&temp_path, &encrypted_bytes)
                                 .await
-                                .map_err(|e| CargoCryptError::from(e))?;
+                                .map_err(CargoCryptError::from)?;
                             tokio::fs::rename(&temp_path, &encrypted_path_clone)
                                 .await
-                                .map_err(|e| CargoCryptError::from(e))?;
+                                .map_err(CargoCryptError::from)?;
                         } else {
                             tokio::fs::write(&encrypted_path_clone, encrypted_bytes)
                                 .await
-                                .map_err(|e| CargoCryptError::from(e))?;
+                                .map_err(CargoCryptError::from)?;
                         }
 
                         Ok(())
@@ -677,7 +677,7 @@ impl CargoCrypt {
                         info!("Creating backup: {}", backup_path.display());
                         tokio::fs::copy(&path_clone, backup_path)
                             .await
-                            .map_err(|e| CargoCryptError::from(e))?;
+                            .map_err(CargoCryptError::from)?;
                         Ok(())
                     }
                 })
@@ -748,9 +748,7 @@ impl CargoCrypt {
             .resilience
             .execute_file_operation(|| async {
                 info!("Reading encrypted file: {}", path_str);
-                tokio::fs::read(path)
-                    .await
-                    .map_err(|e| CargoCryptError::from(e))
+                tokio::fs::read(path).await.map_err(CargoCryptError::from)
             })
             .await?;
 
@@ -758,7 +756,7 @@ impl CargoCrypt {
         let encrypted = {
             info!("Parsing encrypted data");
             crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)
-                .map_err(|e| CargoCryptError::from(e))?
+                .map_err(CargoCryptError::from)?
         };
 
         // Decrypt using the crypto engine with circuit breaker protection
@@ -766,7 +764,7 @@ impl CargoCrypt {
             info!("Decrypting file content");
             self.engine
                 .decrypt(&encrypted, password)
-                .map_err(|e| CargoCryptError::from(e))?
+                .map_err(CargoCryptError::from)?
         };
 
         // Create decrypted file path (remove .enc extension)
@@ -786,14 +784,14 @@ impl CargoCrypt {
                     let temp_path = decrypted_path.with_extension("tmp");
                     tokio::fs::write(&temp_path, decrypted.as_bytes())
                         .await
-                        .map_err(|e| CargoCryptError::from(e))?;
+                        .map_err(CargoCryptError::from)?;
                     tokio::fs::rename(&temp_path, &decrypted_path)
                         .await
-                        .map_err(|e| CargoCryptError::from(e))?;
+                        .map_err(CargoCryptError::from)?;
                 } else {
                     tokio::fs::write(&decrypted_path, decrypted.as_bytes())
                         .await
-                        .map_err(|e| CargoCryptError::from(e))?;
+                        .map_err(CargoCryptError::from)?;
                 }
 
                 Ok(())

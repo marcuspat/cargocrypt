@@ -100,7 +100,7 @@ impl CircuitBreaker {
     }
 
     pub async fn get_state(&self) -> CircuitBreakerState {
-        self.state.read().await.clone()
+        *self.state.read().await
     }
 
     pub async fn reset(&self) {
@@ -336,6 +336,12 @@ pub enum HealthSeverity {
     Info,
     Warning,
     Critical,
+}
+
+impl Default for HealthStatus {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HealthStatus {
