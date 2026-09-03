@@ -109,7 +109,7 @@ impl EncryptionPattern {
 
     /// Parse from gitattributes line
     pub fn from_line(line: &str) -> Option<Self> {
-        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+        let parts: Vec<&str> = line.split_whitespace().collect();
 
         if parts.len() >= 2 {
             let pattern = parts[0].to_string();

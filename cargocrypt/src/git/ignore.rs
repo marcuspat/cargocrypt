@@ -7,6 +7,7 @@
 use super::{GitError, GitRepo, GitResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -67,20 +68,10 @@ impl IgnorePattern {
             Self::Empty
         } else if trimmed.starts_with('#') {
             Self::Comment(trimmed.to_string())
-        } else if trimmed.starts_with('!') {
-            Self::Include(trimmed[1..].to_string())
+        } else if let Some(stripped) = trimmed.strip_prefix('!') {
+            Self::Include(stripped.to_string())
         } else {
             Self::Ignore(trimmed.to_string())
-        }
-    }
-
-    /// Convert to string
-    pub fn to_string(&self) -> String {
-        match self {
-            Self::Ignore(pattern) => pattern.clone(),
-            Self::Include(pattern) => format!("!{}", pattern),
-            Self::Comment(comment) => comment.clone(),
-            Self::Empty => String::new(),
         }
     }
 
@@ -95,6 +86,17 @@ impl IgnorePattern {
             }
             Self::Comment(comment) => comment.to_lowercase().contains("cargocrypt"),
             Self::Empty => false,
+        }
+    }
+}
+
+impl fmt::Display for IgnorePattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ignore(pattern) => write!(f, "{}", pattern),
+            Self::Include(pattern) => write!(f, "!{}", pattern),
+            Self::Comment(comment) => write!(f, "{}", comment),
+            Self::Empty => write!(f, ""),
         }
     }
 }
@@ -291,8 +293,7 @@ impl GitIgnoreManager {
         // Simple implementation - check for common extensions
         let workdir = self.repo.workdir();
 
-        if pattern.starts_with("*.") {
-            let extension = &pattern[2..];
+        if let Some(extension) = pattern.strip_prefix("*.") {
             let mut entries = fs::read_dir(workdir)
                 .await
                 .map_err(|e| GitError::StorageFailed(format!("Failed to read directory: {}", e)))?;
@@ -376,13 +377,11 @@ impl GitIgnoreManager {
             return true;
         }
 
-        if pattern.ends_with("*") {
-            let prefix = &pattern[..pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix("*") {
             return file.starts_with(prefix);
         }
 
-        if pattern.starts_with("*.") {
-            let extension = &pattern[2..];
+        if let Some(extension) = pattern.strip_prefix("*.") {
             return file.ends_with(&format!(".{}", extension));
         }
 

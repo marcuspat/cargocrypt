@@ -210,7 +210,7 @@ impl Default for FeatureConfig {
 }
 
 /// Git-specific settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GitSettings {
     /// Git refs configuration
     pub refs: GitRefsConfig,
@@ -220,17 +220,6 @@ pub struct GitSettings {
     pub branches: BranchConfig,
     /// Remote configuration
     pub remotes: RemoteConfig,
-}
-
-impl Default for GitSettings {
-    fn default() -> Self {
-        Self {
-            refs: GitRefsConfig::default(),
-            commit_templates: CommitTemplates::default(),
-            branches: BranchConfig::default(),
-            remotes: RemoteConfig::default(),
-        }
-    }
 }
 
 /// Git refs configuration

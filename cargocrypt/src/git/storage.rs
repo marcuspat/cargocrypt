@@ -321,7 +321,7 @@ impl EncryptedStorage {
         // Create new tree without the entry
         let mut tree_builder = git_repo.treebuilder(Some(&current_tree))?;
         tree_builder.remove(path)?;
-        tree_builder.remove(&format!("{}.metadata", path))?; // Remove metadata too
+        tree_builder.remove(format!("{}.metadata", path))?; // Remove metadata too
 
         let tree_oid = tree_builder.write()?;
         let tree = git_repo.find_tree(tree_oid)?;
@@ -343,7 +343,7 @@ impl EncryptedStorage {
     fn get_storage_path(&self, file_path: &Path) -> String {
         // Convert file path to storage path (flatten directory structure)
         let path_str = file_path.to_string_lossy();
-        path_str.replace('/', "_").replace('\\', "_")
+        path_str.replace(['/', '\\'], "_")
     }
 
     /// Load metadata for a storage path
@@ -413,7 +413,7 @@ impl EncryptedStorage {
     }
 
     /// Get git signature
-    fn get_signature(&self) -> GitResult<Signature> {
+    fn get_signature(&self) -> GitResult<Signature<'_>> {
         self.repo
             .inner()
             .signature()

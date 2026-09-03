@@ -11,16 +11,12 @@
 
 use super::{GitError, GitRepo, GitResult};
 use crate::crypto::CryptoEngine;
-use crate::error::{CargoCryptError, CryptoResult};
-use crate::resilience::{CircuitBreaker, GracefulDegradation, RetryPolicy};
-use crate::validation::{InputValidator, ValidationResult};
+use crate::validation::InputValidator;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::fs;
 use tracing::{error, info, warn};
 
@@ -256,7 +252,7 @@ impl GitHooks {
 
         // Backup existing hook if configured
         if self.config.backup_existing && hook_path.exists() {
-            let backup_path = hook_path.with_extension(&format!("{}.backup", hook_type.filename()));
+            let backup_path = hook_path.with_extension(format!("{}.backup", hook_type.filename()));
             fs::copy(&hook_path, backup_path)
                 .await
                 .map_err(|e| GitError::HookFailed(format!("Failed to backup hook: {}", e)))?;
@@ -329,7 +325,7 @@ impl GitHooks {
 
                     // Restore backup if it exists
                     let backup_path =
-                        hook_path.with_extension(&format!("{}.backup", hook_type.filename()));
+                        hook_path.with_extension(format!("{}.backup", hook_type.filename()));
                     if backup_path.exists() {
                         fs::rename(backup_path, hook_path).await.map_err(|e| {
                             GitError::HookFailed(format!("Failed to restore backup: {}", e))
@@ -394,7 +390,7 @@ impl SecretDetectionHook {
 
         // Get staged files with validation
         let output = Command::new("git")
-            .args(&["diff", "--cached", "--name-only"])
+            .args(["diff", "--cached", "--name-only"])
             .output()
             .map_err(|e| GitError::HookFailed(format!("Failed to get staged files: {}", e)))?;
 
@@ -419,7 +415,7 @@ impl SecretDetectionHook {
 
             // Validate file path
             let validator = InputValidator::new();
-            let path_validation = validator.validate_file_path(&PathBuf::from(file_path));
+            let path_validation = validator.validate_file_path(PathBuf::from(file_path));
             if !path_validation.is_valid {
                 warn!("Skipping file with invalid path: {}", file_path);
                 continue;
@@ -542,8 +538,7 @@ impl SecretDetectionHook {
 
 impl GitHook for SecretDetectionHook {
     fn generate_script(&self, _config: &HookConfig) -> GitResult<String> {
-        let script = format!(
-            r#"#!/bin/bash
+        let script = r#"#!/bin/bash
 # CargoCrypt Pre-commit Hook - Secret Detection
 # This hook prevents committing files that contain secrets
 
@@ -568,7 +563,7 @@ else
     exit 1
 fi
 "#
-        );
+        .to_string();
 
         Ok(script)
     }

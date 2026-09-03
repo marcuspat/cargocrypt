@@ -899,7 +899,7 @@ impl TeamKeySharing {
     }
 
     /// Get git signature
-    fn get_signature(&self) -> GitResult<Signature> {
+    fn get_signature(&self) -> GitResult<Signature<'_>> {
         self.repo
             .inner()
             .signature()
@@ -930,6 +930,7 @@ impl TeamKeySharing {
     }
 
     /// Verify a key signature
+    #[allow(dead_code)]
     async fn verify_key_signature(
         &self,
         key: &DerivedKey,
@@ -1007,7 +1008,7 @@ impl TeamKeySharing {
             .collect();
 
         // Sort by timestamp (newest first)
-        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        entries.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
 
         if let Some(limit) = limit {
             entries.truncate(limit);

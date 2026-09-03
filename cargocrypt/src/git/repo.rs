@@ -308,7 +308,7 @@ impl GitRepo {
     }
 
     /// Get git signature for commits
-    fn get_signature(&self) -> GitRepoResult<Signature> {
+    fn get_signature(&self) -> GitRepoResult<Signature<'_>> {
         // Try to get from git config first
         self.repo
             .signature()

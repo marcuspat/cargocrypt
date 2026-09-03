@@ -236,7 +236,7 @@ impl GitIntegration {
         let path = path.as_ref();
 
         // Read the file content
-        let content = tokio::fs::read(path).await.map_err(|e| GitError::Io(e))?;
+        let content = tokio::fs::read(path).await.map_err(GitError::Io)?;
 
         // Encrypt the data
         let encrypted = self
@@ -256,7 +256,7 @@ impl GitIntegration {
             .map_err(|e| GitError::SerializationFailed(format!("Failed to serialize: {}", e)))?;
         tokio::fs::write(&encrypted_path, encrypted_bytes)
             .await
-            .map_err(|e| GitError::Io(e))?;
+            .map_err(GitError::Io)?;
 
         // Stage the encrypted file
         self.repo.stage_file(&encrypted_path).await?;
@@ -280,7 +280,7 @@ impl GitIntegration {
         // Read encrypted file
         let encrypted_data = tokio::fs::read(encrypted_path)
             .await
-            .map_err(|e| GitError::Io(e))?;
+            .map_err(GitError::Io)?;
 
         // Deserialize encrypted data
         let encrypted: EncryptedSecret = bincode::deserialize(&encrypted_data)
@@ -302,7 +302,7 @@ impl GitIntegration {
         // Write decrypted data to file
         tokio::fs::write(&decrypted_path, decrypted_data)
             .await
-            .map_err(|e| GitError::Io(e))?;
+            .map_err(GitError::Io)?;
 
         Ok(decrypted_path)
     }
@@ -363,7 +363,7 @@ pub mod utils {
     }
 
     /// Get the git signature for commits
-    pub fn get_signature(repo: &Repository) -> GitResult<Signature> {
+    pub fn get_signature(repo: &Repository) -> GitResult<Signature<'_>> {
         // Try to get from config, fallback to defaults
         repo.signature()
             .or_else(|_| Signature::now("CargoCrypt", "cargocrypt@localhost"))
