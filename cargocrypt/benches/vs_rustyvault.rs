@@ -1,5 +1,5 @@
 //! Comprehensive benchmarks comparing CargoCrypt vs RustyVault
-//! 
+//!
 //! This benchmark suite demonstrates CargoCrypt's 10x performance improvement
 //! over RustyVault for common developer operations. The focus is on real-world
 //! scenarios that developers encounter daily.
@@ -14,19 +14,19 @@
 //! - **Cold Start**: Time to first operation
 //! - **Batch Operations**: Multiple secret operations
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-    measurement::WallTime, BenchmarkGroup,
-};
 use cargocrypt::{
-    CargoCrypt, CryptoConfig, CryptoEngine, EncryptionOptions, PlaintextSecret,
-    SecretDetector, ScanOptions, DetectionConfig, PerformanceProfile,
+    CargoCrypt, CryptoConfig, CryptoEngine, DetectionConfig, EncryptionOptions, PerformanceProfile,
+    PlaintextSecret, ScanOptions, SecretDetector,
 };
-use std::time::{Duration, Instant};
-use std::path::Path;
+use criterion::{
+    black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
+    Criterion, Throughput,
+};
 use std::fs;
-use tokio::runtime::Runtime;
+use std::path::Path;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
+use tokio::runtime::Runtime;
 
 // Mock RustyVault operations to simulate network latency and setup overhead
 struct RustyVaultMock {
@@ -38,9 +38,9 @@ struct RustyVaultMock {
 impl RustyVaultMock {
     fn new() -> Self {
         Self {
-            setup_time: Duration::from_millis(5000),      // 5s server setup
-            network_latency: Duration::from_millis(50),   // 50ms network round-trip
-            server_overhead: Duration::from_millis(100),  // 100ms server processing
+            setup_time: Duration::from_millis(5000),    // 5s server setup
+            network_latency: Duration::from_millis(50), // 50ms network round-trip
+            server_overhead: Duration::from_millis(100), // 100ms server processing
         }
     }
 
@@ -83,12 +83,12 @@ impl RustyVaultMock {
 fn create_test_repo() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
     let repo_path = temp_dir.path();
-    
+
     // Create a realistic Rust project structure
     fs::create_dir_all(repo_path.join("src")).unwrap();
     fs::create_dir_all(repo_path.join("tests")).unwrap();
     fs::create_dir_all(repo_path.join("examples")).unwrap();
-    
+
     // Create Cargo.toml
     fs::write(
         repo_path.join("Cargo.toml"),
@@ -100,16 +100,22 @@ edition = "2021"
 [dependencies]
 tokio = "1.0"
 "#,
-    ).unwrap();
-    
+    )
+    .unwrap();
+
     // Create files with various secrets
     let test_files = vec![
-        ("src/main.rs", r#"fn main() {
+        (
+            "src/main.rs",
+            r#"fn main() {
     let api_key = "sk-1234567890abcdef";
     let database_url = "postgresql://user:password@localhost/db";
     println!("Hello, world!");
-}"#),
-        ("src/config.rs", r#"pub struct Config {
+}"#,
+        ),
+        (
+            "src/config.rs",
+            r#"pub struct Config {
     pub jwt_secret: String,
     pub aws_access_key: String,
 }
@@ -121,22 +127,29 @@ impl Default for Config {
             aws_access_key: "AKIAIOSFODNN7EXAMPLE".to_string(),
         }
     }
-}"#),
-        ("tests/integration.rs", r#"#[cfg(test)]
+}"#,
+        ),
+        (
+            "tests/integration.rs",
+            r#"#[cfg(test)]
 mod tests {
     #[test]
     fn test_auth() {
         let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
         assert!(!token.is_empty());
     }
-}"#),
-        (".env", r#"DATABASE_URL=postgresql://user:pass@localhost/db
+}"#,
+        ),
+        (
+            ".env",
+            r#"DATABASE_URL=postgresql://user:pass@localhost/db
 JWT_SECRET=my-super-secret-jwt-key
 AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-"#),
+"#,
+        ),
     ];
-    
+
     for (file_path, content) in test_files {
         let full_path = repo_path.join(file_path);
         if let Some(parent) = full_path.parent() {
@@ -144,14 +157,14 @@ AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
         }
         fs::write(full_path, content).unwrap();
     }
-    
+
     temp_dir
 }
 
 /// Benchmark 1: Setup Time Comparison
 fn bench_setup_time(c: &mut Criterion) {
     let mut group = c.benchmark_group("setup_time");
-    
+
     // CargoCrypt zero-config setup
     group.bench_function("cargocrypt_init", |b| {
         b.iter(|| {
@@ -164,7 +177,7 @@ fn bench_setup_time(c: &mut Criterion) {
             })
         })
     });
-    
+
     // RustyVault server setup
     group.bench_function("rustyvault_setup", |b| {
         b.iter(|| {
@@ -172,104 +185,100 @@ fn bench_setup_time(c: &mut Criterion) {
             black_box(vault.setup())
         })
     });
-    
+
     group.finish();
 }
 
 /// Benchmark 2: Single Secret Operations
 fn bench_single_secret_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("single_secret_operations");
-    
+
     let rt = Runtime::new().unwrap();
     let engine = CryptoEngine::new();
     let vault = RustyVaultMock::new();
     let test_secret = "sk-1234567890abcdef1234567890abcdef";
     let password = "benchmark_password";
-    
+
     // CargoCrypt encryption
     group.bench_function("cargocrypt_encrypt", |b| {
         b.iter(|| {
             let options = EncryptionOptions::new();
-            black_box(engine.encrypt_string(test_secret, password, options).unwrap())
+            black_box(
+                engine
+                    .encrypt_string(test_secret, password, options)
+                    .unwrap(),
+            )
         })
     });
-    
+
     // RustyVault encryption (with network latency)
     group.bench_function("rustyvault_encrypt", |b| {
-        b.iter(|| {
-            black_box(vault.encrypt_secret(test_secret))
-        })
+        b.iter(|| black_box(vault.encrypt_secret(test_secret)))
     });
-    
+
     // Pre-encrypt for decryption benchmarks
-    let encrypted = engine.encrypt_string(test_secret, password, EncryptionOptions::new()).unwrap();
-    
+    let encrypted = engine
+        .encrypt_string(test_secret, password, EncryptionOptions::new())
+        .unwrap();
+
     // CargoCrypt decryption
     group.bench_function("cargocrypt_decrypt", |b| {
-        b.iter(|| {
-            black_box(engine.decrypt_to_string(&encrypted, password).unwrap())
-        })
+        b.iter(|| black_box(engine.decrypt_to_string(&encrypted, password).unwrap()))
     });
-    
+
     // RustyVault decryption (with network latency)
     group.bench_function("rustyvault_decrypt", |b| {
-        b.iter(|| {
-            black_box(vault.decrypt_secret("encrypted_data"))
-        })
+        b.iter(|| black_box(vault.decrypt_secret("encrypted_data")))
     });
-    
+
     group.finish();
 }
 
 /// Benchmark 3: Repository Scanning Performance
 fn bench_repository_scanning(c: &mut Criterion) {
     let mut group = c.benchmark_group("repository_scanning");
-    
+
     let temp_repo = create_test_repo();
     let repo_path = temp_repo.path();
-    
+
     let rt = Runtime::new().unwrap();
     let vault = RustyVaultMock::new();
-    
+
     // CargoCrypt local scanning
     group.bench_function("cargocrypt_scan", |b| {
         b.iter(|| {
             rt.block_on(async {
                 let detector = SecretDetector::new();
-                let options = ScanOptions::new()
-                    .with_path(repo_path)
-                    .with_max_depth(10);
-                
+                let options = ScanOptions::new().with_path(repo_path).with_max_depth(10);
+
                 black_box(detector.scan_directory(&options).await.unwrap())
             })
         })
     });
-    
+
     // RustyVault remote scanning
     group.bench_function("rustyvault_scan", |b| {
-        b.iter(|| {
-            black_box(vault.scan_repository(repo_path))
-        })
+        b.iter(|| black_box(vault.scan_repository(repo_path)))
     });
-    
+
     group.finish();
 }
 
 /// Benchmark 4: Batch Operations
 fn bench_batch_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_operations");
-    
+
     let engine = CryptoEngine::new();
     let vault = RustyVaultMock::new();
     let password = "batch_password";
-    
+
     let batch_sizes = [10, 50, 100, 500];
-    
+
     for &size in &batch_sizes {
         let secrets: Vec<String> = (0..size)
             .map(|i| format!("secret_{}_{}", i, "a".repeat(32)))
             .collect();
-        
+
         // CargoCrypt batch processing
         group.bench_with_input(
             BenchmarkId::new("cargocrypt_batch", size),
@@ -278,34 +287,34 @@ fn bench_batch_operations(c: &mut Criterion) {
                 b.iter(|| {
                     let options = EncryptionOptions::new();
                     for secret in secrets {
-                        black_box(engine.encrypt_string(secret, password, options.clone()).unwrap());
+                        black_box(
+                            engine
+                                .encrypt_string(secret, password, options.clone())
+                                .unwrap(),
+                        );
                     }
                 })
             },
         );
-        
+
         // RustyVault batch processing (sequential network calls)
         group.bench_with_input(
             BenchmarkId::new("rustyvault_batch", size),
             &size,
-            |b, &size| {
-                b.iter(|| {
-                    black_box(vault.batch_encrypt(size))
-                })
-            },
+            |b, &size| b.iter(|| black_box(vault.batch_encrypt(size))),
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark 5: Cold Start Performance
 fn bench_cold_start(c: &mut Criterion) {
     let mut group = c.benchmark_group("cold_start");
-    
+
     let rt = Runtime::new().unwrap();
     let vault = RustyVaultMock::new();
-    
+
     // CargoCrypt cold start (init + first operation)
     group.bench_function("cargocrypt_cold_start", |b| {
         b.iter(|| {
@@ -314,12 +323,14 @@ fn bench_cold_start(c: &mut Criterion) {
                 let crypt = CargoCrypt::new().await.unwrap();
                 let engine = CryptoEngine::new();
                 let options = EncryptionOptions::new();
-                let _result = engine.encrypt_string("test_secret", "password", options).unwrap();
+                let _result = engine
+                    .encrypt_string("test_secret", "password", options)
+                    .unwrap();
                 black_box(start.elapsed())
             })
         })
     });
-    
+
     // RustyVault cold start (setup + first operation)
     group.bench_function("rustyvault_cold_start", |b| {
         b.iter(|| {
@@ -330,18 +341,18 @@ fn bench_cold_start(c: &mut Criterion) {
             black_box(start.elapsed())
         })
     });
-    
+
     group.finish();
 }
 
 /// Benchmark 6: Throughput Comparison
 fn bench_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("throughput");
-    
+
     let engine = CryptoEngine::new();
     let vault = RustyVaultMock::new();
     let password = "throughput_password";
-    
+
     // Data sizes for throughput testing
     let data_sizes = [
         ("1KB", 1024),
@@ -349,11 +360,11 @@ fn bench_throughput(c: &mut Criterion) {
         ("100KB", 100 * 1024),
         ("1MB", 1024 * 1024),
     ];
-    
+
     for (name, size) in data_sizes {
         let data = "x".repeat(size);
         group.throughput(Throughput::Bytes(size as u64));
-        
+
         // CargoCrypt throughput
         group.bench_with_input(
             BenchmarkId::new("cargocrypt_throughput", name),
@@ -365,7 +376,7 @@ fn bench_throughput(c: &mut Criterion) {
                 })
             },
         );
-        
+
         // RustyVault throughput (simulated with proportional delay)
         group.bench_with_input(
             BenchmarkId::new("rustyvault_throughput", name),
@@ -380,27 +391,27 @@ fn bench_throughput(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark 7: Memory Usage Comparison
 fn bench_memory_usage(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_usage");
-    
+
     let engine = CryptoEngine::new();
     let password = "memory_password";
-    
+
     // Test memory efficiency with different data sizes
     let sizes = [
         ("small", 1024),
         ("medium", 100 * 1024),
         ("large", 1024 * 1024),
     ];
-    
+
     for (name, size) in sizes {
         let data = "x".repeat(size);
-        
+
         // CargoCrypt memory usage (local operations)
         group.bench_with_input(
             BenchmarkId::new("cargocrypt_memory", name),
@@ -414,7 +425,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                 })
             },
         );
-        
+
         // RustyVault memory usage (simulated server overhead)
         group.bench_with_input(
             BenchmarkId::new("rustyvault_memory", name),
@@ -429,20 +440,20 @@ fn bench_memory_usage(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark 8: Concurrent Operations
 fn bench_concurrent_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("concurrent_operations");
-    
+
     let engine = CryptoEngine::new();
     let vault = RustyVaultMock::new();
     let password = "concurrent_password";
-    
+
     let concurrency_levels = [1, 4, 8, 16];
-    
+
     for &level in &concurrency_levels {
         // CargoCrypt concurrent operations
         group.bench_with_input(
@@ -451,23 +462,25 @@ fn bench_concurrent_operations(c: &mut Criterion) {
             |b, &level| {
                 b.iter(|| {
                     use std::thread;
-                    let handles: Vec<_> = (0..level).map(|i| {
-                        let engine = engine.clone();
-                        let password = password.to_string();
-                        let data = format!("concurrent_secret_{}", i);
-                        thread::spawn(move || {
-                            let options = EncryptionOptions::new();
-                            engine.encrypt_string(&data, &password, options).unwrap()
+                    let handles: Vec<_> = (0..level)
+                        .map(|i| {
+                            let engine = engine.clone();
+                            let password = password.to_string();
+                            let data = format!("concurrent_secret_{}", i);
+                            thread::spawn(move || {
+                                let options = EncryptionOptions::new();
+                                engine.encrypt_string(&data, &password, options).unwrap()
+                            })
                         })
-                    }).collect();
-                    
+                        .collect();
+
                     for handle in handles {
                         black_box(handle.join().unwrap());
                     }
                 })
             },
         );
-        
+
         // RustyVault concurrent operations (network contention)
         group.bench_with_input(
             BenchmarkId::new("rustyvault_concurrent", level),
@@ -475,14 +488,14 @@ fn bench_concurrent_operations(c: &mut Criterion) {
             |b, &level| {
                 b.iter(|| {
                     use std::thread;
-                    let handles: Vec<_> = (0..level).map(|i| {
-                        let vault = RustyVaultMock::new();
-                        let data = format!("concurrent_secret_{}", i);
-                        thread::spawn(move || {
-                            vault.encrypt_secret(&data)
+                    let handles: Vec<_> = (0..level)
+                        .map(|i| {
+                            let vault = RustyVaultMock::new();
+                            let data = format!("concurrent_secret_{}", i);
+                            thread::spawn(move || vault.encrypt_secret(&data))
                         })
-                    }).collect();
-                    
+                        .collect();
+
                     for handle in handles {
                         black_box(handle.join().unwrap());
                     }
@@ -490,91 +503,92 @@ fn bench_concurrent_operations(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark 9: Real-world Developer Workflow
 fn bench_developer_workflow(c: &mut Criterion) {
     let mut group = c.benchmark_group("developer_workflow");
-    
+
     let temp_repo = create_test_repo();
     let repo_path = temp_repo.path();
-    
+
     let rt = Runtime::new().unwrap();
     let vault = RustyVaultMock::new();
-    
+
     // Complete CargoCrypt workflow: init + scan + encrypt secrets
     group.bench_function("cargocrypt_workflow", |b| {
         b.iter(|| {
             rt.block_on(async {
                 let start = Instant::now();
-                
+
                 // 1. Initialize CargoCrypt
                 let crypt = CargoCrypt::new().await.unwrap();
-                
+
                 // 2. Scan for secrets
                 let detector = SecretDetector::new();
-                let options = ScanOptions::new()
-                    .with_path(repo_path)
-                    .with_max_depth(5);
+                let options = ScanOptions::new().with_path(repo_path).with_max_depth(5);
                 let findings = detector.scan_directory(&options).await.unwrap();
-                
+
                 // 3. Encrypt found secrets
                 let engine = CryptoEngine::new();
                 let password = "workflow_password";
                 let options = EncryptionOptions::new();
-                
+
                 for finding in findings {
                     if let Some(secret) = finding.secret_value() {
-                        let _encrypted = engine.encrypt_string(secret, password, options.clone()).unwrap();
+                        let _encrypted = engine
+                            .encrypt_string(secret, password, options.clone())
+                            .unwrap();
                     }
                 }
-                
+
                 black_box(start.elapsed())
             })
         })
     });
-    
+
     // Complete RustyVault workflow: setup + upload + scan + download results
     group.bench_function("rustyvault_workflow", |b| {
         b.iter(|| {
             let start = Instant::now();
-            
+
             // 1. Setup RustyVault server
             let vault = RustyVaultMock::new();
             vault.setup();
-            
+
             // 2. Upload and scan repository
             vault.scan_repository(repo_path);
-            
+
             // 3. Process found secrets (simulated)
             for i in 0..10 {
                 vault.encrypt_secret(&format!("found_secret_{}", i));
             }
-            
+
             black_box(start.elapsed())
         })
     });
-    
+
     group.finish();
 }
 
 /// Benchmark 10: Performance Profiles Comparison
 fn bench_performance_profiles(c: &mut Criterion) {
     let mut group = c.benchmark_group("performance_profiles");
-    
+
     let engine = CryptoEngine::new();
     let password = "profile_password";
-    let test_data = "Performance profile test data with sufficient length for meaningful benchmarks";
-    
+    let test_data =
+        "Performance profile test data with sufficient length for meaningful benchmarks";
+
     let profiles = [
         ("fast", PerformanceProfile::Fast),
         ("balanced", PerformanceProfile::Balanced),
         ("secure", PerformanceProfile::Secure),
         ("paranoid", PerformanceProfile::Paranoid),
     ];
-    
+
     for (name, profile) in profiles {
         // CargoCrypt with different performance profiles
         group.bench_with_input(
@@ -582,13 +596,12 @@ fn bench_performance_profiles(c: &mut Criterion) {
             &profile,
             |b, &profile| {
                 b.iter(|| {
-                    let options = EncryptionOptions::new()
-                        .with_performance_profile(profile);
+                    let options = EncryptionOptions::new().with_performance_profile(profile);
                     black_box(engine.encrypt_string(test_data, password, options).unwrap())
                 })
             },
         );
-        
+
         // RustyVault doesn't have performance profiles - always uses default
         group.bench_with_input(
             BenchmarkId::new("rustyvault_profile", name),
@@ -601,15 +614,15 @@ fn bench_performance_profiles(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Performance Analysis Report
 fn generate_performance_report() {
     println!("\n🚀 CargoCrypt vs RustyVault Performance Analysis");
-    println!("=" .repeat(60));
-    
+    println!("=".repeat(60));
+
     println!("\n📊 Expected Performance Improvements:");
     println!("┌─────────────────────────────────────────────────────┐");
     println!("│ Metric                   │ CargoCrypt  │ RustyVault │");
@@ -624,7 +637,7 @@ fn generate_performance_report() {
     println!("│ Concurrent 8 Operations  │ ~1ms        │ ~1200ms    │");
     println!("│ Developer Workflow       │ ~100ms      │ ~10000ms   │");
     println!("└─────────────────────────────────────────────────────┘");
-    
+
     println!("\n🎯 Key Performance Advantages:");
     println!("• 🚀 500x faster setup (10ms vs 5000ms)");
     println!("• ⚡ 1500x faster single operations (0.1ms vs 150ms)");
@@ -633,14 +646,14 @@ fn generate_performance_report() {
     println!("• 💾 Zero server overhead vs high memory usage");
     println!("• 🌐 No network latency vs 50ms+ per operation");
     println!("• 🛠️ 100x faster developer workflow (100ms vs 10000ms)");
-    
+
     println!("\n💡 Real-world Impact:");
     println!("• Developer productivity: 10x improvement");
     println!("• CI/CD pipeline speed: 50x faster secret scanning");
     println!("• Local development: Zero network dependencies");
     println!("• Enterprise deployment: No server infrastructure needed");
     println!("• Security: Air-gapped operations, no data transmission");
-    
+
     println!("\n🔬 Technical Advantages:");
     println!("• ChaCha20-Poly1305: Modern, fast authenticated encryption");
     println!("• Argon2: Memory-hard key derivation function");
@@ -648,7 +661,7 @@ fn generate_performance_report() {
     println!("• Parallel processing for batch operations");
     println!("• Efficient memory management with zeroization");
     println!("• Rust's zero-cost abstractions");
-    
+
     println!("\n📋 Benchmark Suite Coverage:");
     println!("✅ Setup and initialization time");
     println!("✅ Single secret encrypt/decrypt operations");
@@ -660,7 +673,7 @@ fn generate_performance_report() {
     println!("✅ Concurrent operations scaling");
     println!("✅ Complete developer workflow scenarios");
     println!("✅ Performance profile optimizations");
-    
+
     println!("\n🎖️ Conclusion:");
     println!("CargoCrypt delivers 10x+ performance improvement across all metrics");
     println!("while providing enterprise-grade security with zero configuration.");
@@ -687,49 +700,49 @@ criterion_main!(benches);
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_rustyvault_mock() {
         let vault = RustyVaultMock::new();
         assert!(vault.network_latency > Duration::from_millis(0));
         assert!(vault.setup_time > Duration::from_millis(1000));
     }
-    
+
     #[test]
     fn test_repo_creation() {
         let temp_repo = create_test_repo();
         let repo_path = temp_repo.path();
-        
+
         assert!(repo_path.join("Cargo.toml").exists());
         assert!(repo_path.join("src/main.rs").exists());
         assert!(repo_path.join(".env").exists());
     }
-    
+
     #[test]
     fn verify_performance_targets() {
         // This test ensures our performance targets are realistic
         let rt = Runtime::new().unwrap();
         let engine = CryptoEngine::new();
-        
+
         // Test that single operations are indeed fast
         let start = Instant::now();
         rt.block_on(async {
             let _crypt = CargoCrypt::new().await.unwrap();
         });
         let init_time = start.elapsed();
-        
+
         // Should be much faster than 1 second
         assert!(init_time < Duration::from_millis(1000));
-        
+
         // Test encryption speed
         let start = Instant::now();
         let options = EncryptionOptions::new();
         let _encrypted = engine.encrypt_string("test", "password", options).unwrap();
         let encrypt_time = start.elapsed();
-        
+
         // Should be much faster than 10ms
         assert!(encrypt_time < Duration::from_millis(10));
-        
+
         println!("✅ Performance targets verified:");
         println!("   • Init time: {:?}", init_time);
         println!("   • Encrypt time: {:?}", encrypt_time);
