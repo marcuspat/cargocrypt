@@ -1,11 +1,11 @@
 //! Configuration management for Git integration
-//! 
+//!
 //! This module handles all configuration aspects of CargoCrypt's git integration,
 //! including repository setup, integration modes, and feature toggles.
 
-use super::{GitRepo, GitError, GitResult};
-use tokio::fs;
+use super::{GitError, GitRepo, GitResult};
 use serde::{Deserialize, Serialize};
+use tokio::fs;
 
 /// Main configuration for Git integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,13 +38,15 @@ impl GitCryptConfig {
     /// Load configuration from repository
     pub async fn load_or_default(repo: &GitRepo) -> GitResult<Self> {
         let config_path = repo.workdir().join(".cargocrypt").join("git.toml");
-        
+
         if config_path.exists() {
-            let content = fs::read_to_string(&config_path).await
-                .map_err(|e| GitError::InitializationFailed(format!("Failed to read git config: {}", e)))?;
-            
-            toml::from_str(&content)
-                .map_err(|e| GitError::InitializationFailed(format!("Failed to parse git config: {}", e)))
+            let content = fs::read_to_string(&config_path).await.map_err(|e| {
+                GitError::InitializationFailed(format!("Failed to read git config: {}", e))
+            })?;
+
+            toml::from_str(&content).map_err(|e| {
+                GitError::InitializationFailed(format!("Failed to parse git config: {}", e))
+            })
         } else {
             // Create default config
             let config = Self::default();
@@ -52,26 +54,29 @@ impl GitCryptConfig {
             Ok(config)
         }
     }
-    
+
     /// Save configuration to repository
     pub async fn save(&self, repo: &GitRepo) -> GitResult<()> {
         let config_path = repo.workdir().join(".cargocrypt").join("git.toml");
-        
+
         // Ensure directory exists
         if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent).await
-                .map_err(|e| GitError::InitializationFailed(format!("Failed to create config directory: {}", e)))?;
+            fs::create_dir_all(parent).await.map_err(|e| {
+                GitError::InitializationFailed(format!("Failed to create config directory: {}", e))
+            })?;
         }
-        
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| GitError::InitializationFailed(format!("Failed to serialize git config: {}", e)))?;
-        
-        fs::write(&config_path, content).await
-            .map_err(|e| GitError::InitializationFailed(format!("Failed to write git config: {}", e)))?;
-        
+
+        let content = toml::to_string_pretty(self).map_err(|e| {
+            GitError::InitializationFailed(format!("Failed to serialize git config: {}", e))
+        })?;
+
+        fs::write(&config_path, content).await.map_err(|e| {
+            GitError::InitializationFailed(format!("Failed to write git config: {}", e))
+        })?;
+
         Ok(())
     }
-    
+
     /// Update configuration with new values
     pub async fn update<F>(&mut self, repo: &GitRepo, updater: F) -> GitResult<()>
     where
@@ -80,7 +85,7 @@ impl GitCryptConfig {
         updater(self);
         self.save(repo).await
     }
-    
+
     /// Check if a feature is enabled
     pub fn is_feature_enabled(&self, feature: &str) -> bool {
         match feature {
@@ -94,7 +99,7 @@ impl GitCryptConfig {
             _ => false,
         }
     }
-    
+
     /// Enable a feature
     pub fn enable_feature(&mut self, feature: &str) {
         match feature {
@@ -108,7 +113,7 @@ impl GitCryptConfig {
             _ => {}
         }
     }
-    
+
     /// Disable a feature
     pub fn disable_feature(&mut self, feature: &str) {
         match feature {
@@ -386,41 +391,41 @@ impl GitCryptConfig {
     /// Validate configuration settings
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
-        
+
         // Validate refs
         if self.git.refs.storage_ref.is_empty() {
             errors.push("Storage ref cannot be empty".to_string());
         }
-        
+
         if self.git.refs.team_ref.is_empty() {
             errors.push("Team ref cannot be empty".to_string());
         }
-        
+
         // Validate performance settings
         if self.performance.max_concurrent == 0 {
             errors.push("Max concurrent operations must be greater than 0".to_string());
         }
-        
+
         if self.performance.compression.level > 9 {
             errors.push("Compression level must be between 1 and 9".to_string());
         }
-        
+
         // Validate feature dependencies
         if self.features.team_sharing && !self.features.encrypted_storage {
             errors.push("Team sharing requires encrypted storage to be enabled".to_string());
         }
-        
+
         if self.features.auto_encryption && !self.features.git_attributes {
             errors.push("Auto encryption requires git attributes to be enabled".to_string());
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
         }
     }
-    
+
     /// Migrate configuration from older versions
     pub fn migrate_from_version(&mut self, version: u32) -> GitResult<()> {
         match version {
@@ -434,10 +439,10 @@ impl GitCryptConfig {
                 *self = Self::default();
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Get configuration summary for display
     pub fn summary(&self) -> ConfigSummary {
         ConfigSummary {
@@ -456,11 +461,11 @@ impl GitCryptConfig {
             ),
         }
     }
-    
+
     /// Get list of enabled features
     fn get_enabled_features(&self) -> Vec<String> {
         let mut features = Vec::new();
-        
+
         if self.features.gitignore_management {
             features.push("gitignore_management".to_string());
         }
@@ -482,7 +487,7 @@ impl GitCryptConfig {
         if self.features.secret_detection {
             features.push("secret_detection".to_string());
         }
-        
+
         features
     }
 }
@@ -500,81 +505,83 @@ pub struct ConfigSummary {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     #[tokio::test]
     async fn test_config_creation_and_save() {
         let temp_dir = TempDir::new().unwrap();
         let repo = GitRepo::init(temp_dir.path()).unwrap();
-        
+
         let config = GitCryptConfig::default();
         config.save(&repo).await.unwrap();
-        
+
         let config_path = temp_dir.path().join(".cargocrypt/git.toml");
         assert!(config_path.exists());
     }
-    
+
     #[tokio::test]
     async fn test_config_load_or_default() {
         let temp_dir = TempDir::new().unwrap();
         let repo = GitRepo::init(temp_dir.path()).unwrap();
-        
+
         // Should create default config if none exists
         let config = GitCryptConfig::load_or_default(&repo).await.unwrap();
         assert_eq!(config.mode, IntegrationMode::GitNative);
-        
+
         // Should load existing config
         let config2 = GitCryptConfig::load_or_default(&repo).await.unwrap();
         assert_eq!(config.mode, config2.mode);
     }
-    
+
     #[test]
     fn test_feature_management() {
         let mut config = GitCryptConfig::default();
-        
+
         assert!(config.is_feature_enabled("gitignore_management"));
-        
+
         config.disable_feature("gitignore_management");
         assert!(!config.is_feature_enabled("gitignore_management"));
-        
+
         config.enable_feature("gitignore_management");
         assert!(config.is_feature_enabled("gitignore_management"));
     }
-    
+
     #[test]
     fn test_config_validation() {
         let mut config = GitCryptConfig::default();
         assert!(config.validate().is_ok());
-        
+
         // Test invalid compression level
         config.performance.compression.level = 10;
         assert!(config.validate().is_err());
-        
+
         // Test invalid max concurrent
         config.performance.compression.level = 6;
         config.performance.max_concurrent = 0;
         assert!(config.validate().is_err());
     }
-    
+
     #[test]
     fn test_feature_dependencies() {
         let mut config = GitCryptConfig::default();
-        
+
         // Enable team sharing but disable encrypted storage
         config.features.team_sharing = true;
         config.features.encrypted_storage = false;
-        
+
         let validation_result = config.validate();
         assert!(validation_result.is_err());
-        
+
         let errors = validation_result.unwrap_err();
-        assert!(errors.iter().any(|e| e.contains("Team sharing requires encrypted storage")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("Team sharing requires encrypted storage")));
     }
-    
+
     #[test]
     fn test_config_summary() {
         let config = GitCryptConfig::default();
         let summary = config.summary();
-        
+
         assert_eq!(summary.mode, IntegrationMode::GitNative);
         assert!(!summary.enabled_features.is_empty());
         assert_eq!(summary.git_refs.len(), 3);
