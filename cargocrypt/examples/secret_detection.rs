@@ -3,7 +3,7 @@
 //! This example shows how to use CargoCrypt's secret detection capabilities
 //! to scan files and directories for potential secrets, API keys, and tokens.
 
-use cargocrypt::detection::{SecretDetector, ScanOptions, DetectionConfig};
+use cargocrypt::detection::{DetectionConfig, ScanOptions, SecretDetector};
 use std::env;
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example 1: Scan content directly
     println!("📝 Example 1: Scanning text content");
     println!("-----------------------------------");
-    
+
     let test_content = r#"
 # Configuration file
 AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
@@ -40,7 +40,7 @@ PORT=3000
 "#;
 
     let findings = detector.scan_content(test_content, "example.env")?;
-    
+
     println!("Found {} potential secrets:", findings.len());
     for (i, finding) in findings.iter().enumerate() {
         println!(
@@ -50,7 +50,7 @@ PORT=3000
             finding.secret.line_number,
             finding.confidence * 100.0
         );
-        
+
         if let Some(entropy) = finding.entropy_score {
             println!("     Entropy: {:.2}", entropy);
         }
@@ -60,22 +60,22 @@ PORT=3000
     // Example 2: Different scan options
     println!("⚙️  Example 2: Using different scan options");
     println!("------------------------------------------");
-    
+
     // High confidence only
-    let high_confidence_options = ScanOptions::default()
-        .with_min_confidence(0.8);
-    
+    let high_confidence_options = ScanOptions::default().with_min_confidence(0.8);
+
     let high_confidence_findings = detector.scan_content(test_content, "example.env")?;
-    let high_conf_count = high_confidence_findings.iter()
+    let high_conf_count = high_confidence_findings
+        .iter()
         .filter(|f| f.confidence >= 0.8)
         .count();
-    
+
     println!("High confidence findings (>80%): {}", high_conf_count);
-    
+
     // Configuration files optimized scan
     let config_options = ScanOptions::for_config_files();
     println!("Config file optimized scan ready");
-    
+
     // Source code optimized scan
     let source_options = ScanOptions::for_source_code();
     println!("Source code optimized scan ready");
@@ -84,7 +84,7 @@ PORT=3000
     // Example 3: Pattern examples
     println!("🔍 Example 3: Detection patterns overview");
     println!("-----------------------------------------");
-    
+
     println!("Built-in detection patterns include:");
     println!("• AWS Access Keys (AKIA...)");
     println!("• GitHub Personal Access Tokens (ghp_...)");
@@ -110,7 +110,9 @@ PORT=3000
     // Example 5: Integration examples
     println!("🔧 Example 5: Integration examples");
     println!("----------------------------------");
-    println!("{}", r#"
+    println!(
+        "{}",
+        r#"
 // Scan a single file
 let findings = detector.scan_file("config.env", &options).await?;
 
@@ -131,7 +133,8 @@ let custom_config = DetectionConfig {
 };
 
 let custom_detector = SecretDetector::with_config(custom_config);
-"#);
+"#
+    );
 
     println!("🎯 Example 6: Real-world usage patterns");
     println!("---------------------------------------");
@@ -144,7 +147,9 @@ let custom_detector = SecretDetector::with_config(custom_config);
     println!();
 
     println!("✨ Detection system demo complete.");
-    println!("   See README.md for this project's current status before relying on it in production.");
+    println!(
+        "   See README.md for this project's current status before relying on it in production."
+    );
 
     Ok(())
 }

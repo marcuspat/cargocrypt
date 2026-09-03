@@ -26,27 +26,26 @@
 
 // Re-export main types for easy access
 pub use crate::core::{
-    CargoCrypt, CargoCryptBuilder, CryptoConfig, SecretBytes, 
-    ResilienceManager, ResilienceConfig
+    CargoCrypt, CargoCryptBuilder, CryptoConfig, ResilienceConfig, ResilienceManager, SecretBytes,
 };
 pub use crate::crypto::{
-    CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret, 
-    SecretMetadata, SecretType as CryptoSecretType, PerformanceProfile, EncryptionOptions,
-    CryptoError, CryptoResult as CryptoCoreResult
+    CryptoEngine, CryptoError, CryptoResult as CryptoCoreResult, DerivedKey, EncryptedSecret,
+    EncryptionOptions, PerformanceProfile, PlaintextSecret, SecretMetadata,
+    SecretType as CryptoSecretType,
 };
-pub use crate::error::{CargoCryptError, ErrorKind, CryptoResult};
 pub use crate::detection::{
-    SecretDetector, ScanOptions, DetectionConfig, Finding, FoundSecret,
-    SecretType as DetectionSecretType, PatternMatch, EntropyResult, CustomRule, RuleEngine,
+    CustomRule, DetectionConfig, EntropyResult, Finding, FoundSecret, PatternMatch, RuleEngine,
+    ScanOptions, SecretDetector, SecretType as DetectionSecretType,
 };
+pub use crate::error::{CargoCryptError, CryptoResult, ErrorKind};
 
 // Core modules
 pub mod core;
 pub mod crypto;
 pub mod error;
-pub mod validation;
-pub mod resilience;
 pub mod monitoring;
+pub mod resilience;
+pub mod validation;
 
 // Feature modules
 // pub mod auth;
@@ -84,7 +83,10 @@ pub async fn init() -> CryptoResult<()> {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn encrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> CryptoResult<std::path::PathBuf> {
+pub async fn encrypt<P: AsRef<std::path::Path>>(
+    path: P,
+    password: &str,
+) -> CryptoResult<std::path::PathBuf> {
     let crypt = CargoCrypt::new().await?;
     crypt.encrypt_file(path, password).await
 }
@@ -100,7 +102,10 @@ pub async fn encrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> Cryp
 /// # Ok(())
 /// # }
 /// ```
-pub async fn decrypt<P: AsRef<std::path::Path>>(path: P, password: &str) -> CryptoResult<std::path::PathBuf> {
+pub async fn decrypt<P: AsRef<std::path::Path>>(
+    path: P,
+    password: &str,
+) -> CryptoResult<std::path::PathBuf> {
     let crypt = CargoCrypt::new().await?;
     crypt.decrypt_file(path, password).await
 }
@@ -135,17 +140,17 @@ pub mod utils {
     /// Find the root of the current Rust project
     pub fn find_project_root() -> CryptoResult<std::path::PathBuf> {
         let mut current = std::env::current_dir()?;
-        
+
         loop {
             if current.join("Cargo.toml").exists() {
                 return Ok(current);
             }
-            
+
             if !current.pop() {
                 break;
             }
         }
-        
+
         Err(crate::error::CargoCryptError::project_not_found())
     }
 }
@@ -163,9 +168,18 @@ mod tests {
 
     #[test]
     fn test_original_filename() {
-        assert_eq!(utils::original_filename("file.txt.enc"), Some("file.txt".to_string()));
-        assert_eq!(utils::original_filename("secrets.rs.enc"), Some("secrets.rs".to_string()));
-        assert_eq!(utils::original_filename("file.txt"), Some("file".to_string()));
+        assert_eq!(
+            utils::original_filename("file.txt.enc"),
+            Some("file.txt".to_string())
+        );
+        assert_eq!(
+            utils::original_filename("secrets.rs.enc"),
+            Some("secrets.rs".to_string())
+        );
+        assert_eq!(
+            utils::original_filename("file.txt"),
+            Some("file".to_string())
+        );
     }
 
     #[test]
