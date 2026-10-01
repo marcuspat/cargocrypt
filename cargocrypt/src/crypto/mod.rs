@@ -18,7 +18,7 @@ pub use engine::{
     PerformanceProfile,
 };
 pub use errors::{CryptoError, CryptoResult};
-pub use keys::{DerivedKey, KeyDerivationParams, SecureRandom};
+pub use keys::{DerivedKey, KdfParams, KeyDerivationParams, SecureRandom};
 pub use secrets::{EncryptedSecret, PlaintextSecret, SecretMetadata, SecretType};
 pub use security::{
     constant_time_compare, KeyDerivationValidator, SecureBuffer, SecureRandom as SecurityRandom,

@@ -6,7 +6,6 @@ use crate::crypto::{
 };
 use crate::resilience::{CircuitBreaker, RetryPolicy};
 use crate::validation::InputValidator;
-use argon2::Argon2;
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
@@ -16,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use zeroize::Zeroize;
 
 /// Main cryptographic engine for CargoCrypt with resilience features
 ///
@@ -62,6 +60,11 @@ pub enum PerformanceProfile {
 }
 
 impl PerformanceProfile {
+    /// Argon2id cost parameters for this profile
+    pub fn kdf_params(&self) -> crate::crypto::KdfParams {
+        crate::crypto::KdfParams::from(&self.argon2_params())
+    }
+
     /// Get Argon2 parameters for this profile
     pub fn argon2_params(&self) -> argon2::Params {
         match self {
@@ -516,21 +519,10 @@ impl CryptoEngine {
         salt: &[u8; defaults::SALT_LENGTH],
         profile: PerformanceProfile,
     ) -> CryptoResult<DerivedKey> {
-        let params = profile.argon2_params();
-        let argon2 = Argon2::new(defaults::ARGON2_ALGORITHM, defaults::ARGON2_VERSION, params);
-
-        let mut key_bytes = [0u8; defaults::KEY_LENGTH];
-
-        argon2
-            .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
-            .map_err(CryptoError::from)?;
-
-        let _key = *Key::from_slice(&key_bytes);
-
-        // Zeroize intermediate data
-        key_bytes.zeroize();
-
-        DerivedKey::from_password_with_salt(password, salt)
+        // One derivation, with the profile's parameters. The parameters are
+        // carried on the key and written into the container header, so
+        // decryption does not need to know which profile was used.
+        DerivedKey::derive(password, salt, profile.kdf_params())
     }
 
     /// Derive a key with a specific salt
@@ -792,12 +784,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_performance_profiles() {
-        let profiles = [
-            PerformanceProfile::Fast,
-            PerformanceProfile::Balanced,
-            PerformanceProfile::Secure,
-            PerformanceProfile::Paranoid,
-        ];
+        // Secure and Paranoid are covered by `test_profile_parameters`; running
+        // 256 MiB and 1 GiB derivations here would only test the machine.
+        let profiles = [PerformanceProfile::Fast, PerformanceProfile::Balanced];
 
         for profile in profiles {
             let engine = CryptoEngine::with_performance_profile(profile);
@@ -808,10 +797,49 @@ mod tests {
                 .encrypt_string(plaintext, password, EncryptionOptions::new())
                 .await
                 .unwrap();
-            let decrypted = engine.decrypt_to_string(&encrypted, password).unwrap();
+            assert_eq!(encrypted.kdf_params(), profile.kdf_params());
+
+            // Decryption reads the parameters from the container, so an engine
+            // configured with a different profile still opens it.
+            let other = CryptoEngine::new();
+            let decrypted = other.decrypt_to_string(&encrypted, password).unwrap();
 
             assert_eq!(plaintext, decrypted);
         }
+    }
+
+    #[test]
+    fn test_profile_parameters() {
+        let all = [
+            PerformanceProfile::Fast,
+            PerformanceProfile::Balanced,
+            PerformanceProfile::Secure,
+            PerformanceProfile::Paranoid,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            a.kdf_params().validate().unwrap();
+            for b in &all[i + 1..] {
+                assert_ne!(a.kdf_params(), b.kdf_params());
+            }
+        }
+        assert_eq!(
+            PerformanceProfile::Balanced.kdf_params(),
+            crate::crypto::KdfParams::V1
+        );
+    }
+
+    #[test]
+    fn test_profile_changes_the_derived_key() {
+        let salt = [7u8; defaults::SALT_LENGTH];
+        let fast = CryptoEngine::with_performance_profile(PerformanceProfile::Fast)
+            .derive_key_with_salt("test_password", &salt)
+            .unwrap();
+        let balanced = CryptoEngine::with_performance_profile(PerformanceProfile::Balanced)
+            .derive_key_with_salt("test_password", &salt)
+            .unwrap();
+
+        assert_ne!(fast.key().as_slice(), balanced.key().as_slice());
+        assert_eq!(fast.kdf_params(), PerformanceProfile::Fast.kdf_params());
     }
 
     #[tokio::test]

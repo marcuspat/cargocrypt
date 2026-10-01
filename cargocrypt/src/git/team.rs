@@ -734,7 +734,7 @@ impl TeamKeySharing {
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt key: {}", e)))?;
 
         // Serialize to base64
-        let serialized = bincode::serialize(&encrypted).map_err(|e| {
+        let serialized = encrypted.to_bytes().map_err(|e| {
             GitError::TeamSharingFailed(format!("Failed to serialize encrypted key: {}", e))
         })?;
 
@@ -752,7 +752,7 @@ impl TeamKeySharing {
             GitError::TeamSharingFailed(format!("Failed to decode encrypted key: {}", e))
         })?;
 
-        let encrypted: EncryptedSecret = bincode::deserialize(&serialized).map_err(|e| {
+        let encrypted: EncryptedSecret = EncryptedSecret::from_bytes(&serialized).map_err(|e| {
             GitError::TeamSharingFailed(format!("Failed to deserialize encrypted key: {}", e))
         })?;
 

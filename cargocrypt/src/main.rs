@@ -298,12 +298,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
             let encrypted = crypt.crypto().encrypt_data(&input, &password).await?;
 
             // Output encrypted data
-            let encrypted_bytes = bincode::serialize(&encrypted).map_err(|e| {
-                cargocrypt::error::CargoCryptError::Serialization {
-                    message: format!("Failed to serialize: {}", e),
-                    source: Box::new(e),
-                }
-            })?;
+            let encrypted_bytes = encrypted.to_bytes()?;
             io::stdout()
                 .write_all(&encrypted_bytes)
                 .map_err(cargocrypt::error::CargoCryptError::from)?;
@@ -323,26 +318,18 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
 
             let crypt = CargoCrypt::new().await?;
 
-            // Try to deserialize and decrypt
-            match bincode::deserialize::<EncryptedSecret>(&input) {
+            // A blob that is not a CargoCrypt container was committed before
+            // the filter was configured: pass it through untouched. A blob that
+            // is a container must decrypt, or the smudge fails.
+            match EncryptedSecret::from_bytes(&input) {
                 Ok(encrypted) => {
-                    match crypt.crypto().decrypt_data(&encrypted, &password) {
-                        Ok(decrypted) => {
-                            io::stdout()
-                                .write_all(&decrypted)
-                                .map_err(cargocrypt::error::CargoCryptError::from)?;
-                        }
-                        Err(e) => {
-                            // Fail closed: the blob parsed as a CargoCrypt container but
-                            // did not authenticate. Writing the ciphertext into the working
-                            // tree would silently hand the user garbage, so make git report
-                            // the smudge failure instead.
-                            return Err(e.into());
-                        }
-                    }
+                    let decrypted = crypt.crypto().decrypt_data(&encrypted, &password)?;
+                    io::stdout()
+                        .write_all(&decrypted)
+                        .map_err(cargocrypt::error::CargoCryptError::from)?;
                 }
+                Err(e) if EncryptedSecret::has_magic(&input) => return Err(e.into()),
                 Err(_) => {
-                    // If deserialization fails, output original (not encrypted)
                     io::stdout()
                         .write_all(&input)
                         .map_err(cargocrypt::error::CargoCryptError::from)?;

@@ -69,7 +69,7 @@ Ordered by how badly they undercut what the README promises.
 
 - [x] 1. Roadmap; git filters fail closed (no default password, no ciphertext
       pass-through on auth failure); logs to stderr.
-- [ ] 2. Versioned container format v2: magic + version + algorithm id + Argon2
+- [x] 2. Versioned container format v2: magic + version + algorithm id + Argon2
       parameters in a header that is bound as AEAD associated data. Make the
       performance profile actually drive the KDF (one derivation, not two).
       v1 files stay readable. Tests: each profile yields a different key;
@@ -91,8 +91,8 @@ Ordered by how badly they undercut what the README promises.
       drop the `git config cargocrypt.password` source (warn if present).
 - [ ] 8. Make every target compile and lint: repair or delete
       `benches/vs_rustyvault.rs`, fix test lints, CI runs
-      `clippy --all-targets -D warnings`. Cut unit-test time by using the Fast
-      profile under test (possible once item 2 lands).
+      `clippy --all-targets -D warnings`. (Test time is already handled:
+      loop 2 took the unit suite from ~200 s to ~6 s.)
 - [ ] 9. Supply chain: remove unused dependencies, add `deny.toml`, run
       `cargo-deny` and `cargo-audit` in CI, declare and test an MSRV, add
       Dependabot for cargo and actions, pin actions by SHA.
@@ -118,3 +118,13 @@ Ordered by how badly they undercut what the README promises.
   errors on authentication failure, tracing writes to stderr. New
   `tests/git_filter_test.rs` (2 tests) covers both and is the first test to
   exercise the filters end to end.
+- Loop 2 (2026-10-01): container format v2 (`CCRY` magic, version, AEAD and
+  KDF ids, Argon2 parameters, salt, nonce, metadata) with the whole header
+  bound as associated data. The performance profile now drives the KDF, with
+  one derivation instead of two; decryption reads the parameters from the
+  container. Parameters from an untrusted header are bounded (2 GiB, 64
+  passes, 64 lanes). v1 containers still decrypt, checked against a fixture
+  written by the 0.2.3 binary. `EncryptedSecret::set_metadata` was removed:
+  it had no callers and metadata is now authenticated. All `bincode` call
+  sites go through `to_bytes` / `from_bytes`. Argon2 and the cipher crates are
+  optimised in dev builds: unit tests 203 s -> 6 s. 157 tests.

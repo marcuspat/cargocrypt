@@ -94,6 +94,17 @@ harness = false
 name = "vs_rustyvault"
 harness = false
 
+# Argon2 at opt-level 0 is ~30x slower and dominates the test suite. Optimise
+# just the KDF and cipher crates in dev and test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 lto = true

@@ -4,8 +4,83 @@ use crate::crypto::{defaults, CryptoError, CryptoResult};
 use argon2::{Argon2, Params};
 use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
+use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+/// Argon2id cost parameters.
+///
+/// These travel in the header of every v2 container, so a file records how
+/// its key was derived and can be decrypted without knowing which profile
+/// produced it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KdfParams {
+    /// Memory cost in KiB
+    pub m_cost: u32,
+    /// Number of passes
+    pub t_cost: u32,
+    /// Degree of parallelism
+    pub p_cost: u32,
+}
+
+impl KdfParams {
+    /// The parameters every v1 container was written with (64 MiB, 3 passes, 4 lanes).
+    pub const V1: Self = Self {
+        m_cost: 65536,
+        t_cost: 3,
+        p_cost: 4,
+    };
+
+    /// Upper bounds accepted from an untrusted header. A container is
+    /// attacker-controlled input: without a ceiling, a crafted file could ask
+    /// for terabytes of memory or days of CPU before authentication runs.
+    pub const MAX_M_COST: u32 = 2 * 1024 * 1024; // 2 GiB
+    /// Largest accepted pass count
+    pub const MAX_T_COST: u32 = 64;
+    /// Largest accepted lane count
+    pub const MAX_P_COST: u32 = 64;
+
+    /// Check the parameters are usable and within the accepted bounds.
+    pub fn validate(&self) -> CryptoResult<()> {
+        if self.m_cost > Self::MAX_M_COST
+            || self.t_cost > Self::MAX_T_COST
+            || self.p_cost > Self::MAX_P_COST
+        {
+            return Err(CryptoError::key_derivation(format!(
+                "KDF parameters exceed accepted limits: m={} KiB, t={}, p={}",
+                self.m_cost, self.t_cost, self.p_cost
+            )));
+        }
+        self.to_argon2().map(|_| ())
+    }
+
+    /// Convert to the `argon2` crate's parameter type.
+    pub fn to_argon2(&self) -> CryptoResult<Params> {
+        Params::new(
+            self.m_cost,
+            self.t_cost,
+            self.p_cost,
+            Some(defaults::KEY_LENGTH),
+        )
+        .map_err(|e| CryptoError::key_derivation(e.to_string()))
+    }
+}
+
+impl Default for KdfParams {
+    fn default() -> Self {
+        Self::V1
+    }
+}
+
+impl From<&Params> for KdfParams {
+    fn from(p: &Params) -> Self {
+        Self {
+            m_cost: p.m_cost(),
+            t_cost: p.t_cost(),
+            p_cost: p.p_cost(),
+        }
+    }
+}
 
 /// A cryptographically derived key with automatic zeroization
 #[derive(Clone, ZeroizeOnDrop)]
@@ -14,6 +89,9 @@ pub struct DerivedKey {
     key: Key,
     /// The salt used for derivation
     salt: [u8; defaults::SALT_LENGTH],
+    /// The cost parameters used for derivation
+    #[zeroize(skip)]
+    params: KdfParams,
 }
 
 impl DerivedKey {
@@ -39,7 +117,29 @@ impl DerivedKey {
         Ok(Self {
             key,
             salt: params.salt,
+            params: KdfParams::from(&params.argon2_params),
         })
+    }
+
+    /// Derive a key from a password, salt and explicit cost parameters.
+    pub fn derive(
+        password: &str,
+        salt: &[u8; defaults::SALT_LENGTH],
+        kdf: KdfParams,
+    ) -> CryptoResult<Self> {
+        kdf.validate()?;
+        Self::from_password(
+            password,
+            &KeyDerivationParams {
+                argon2_params: kdf.to_argon2()?,
+                salt: *salt,
+            },
+        )
+    }
+
+    /// The cost parameters this key was derived with
+    pub fn kdf_params(&self) -> KdfParams {
+        self.params
     }
 
     /// Create a new derived key with a random salt
@@ -136,7 +236,11 @@ impl DerivedKey {
         let mut salt = [0u8; defaults::SALT_LENGTH];
         salt.copy_from_slice(&bytes[defaults::KEY_LENGTH..]);
 
-        Ok(Self { key, salt })
+        Ok(Self {
+            key,
+            salt,
+            params: KdfParams::default(),
+        })
     }
 }
 
