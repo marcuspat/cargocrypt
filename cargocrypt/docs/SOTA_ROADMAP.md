@@ -74,7 +74,7 @@ Ordered by how badly they undercut what the README promises.
       performance profile actually drive the KDF (one derivation, not two).
       v1 files stay readable. Tests: each profile yields a different key;
       header tampering fails authentication; v1 fixture still decrypts.
-- [ ] 3. XChaCha20-Poly1305 for v2 containers (24-byte nonce). Known-answer
+- [x] 3. XChaCha20-Poly1305 for v2 containers (24-byte nonce). Known-answer
       tests against the draft-irtf-cfrg-xchacha vector and RFC 8439.
 - [ ] 4. Streaming file encryption: 64 KiB chunked STREAM construction,
       constant memory, final-chunk flag so truncation is detected; atomic
@@ -128,3 +128,9 @@ Ordered by how badly they undercut what the README promises.
   it had no callers and metadata is now authenticated. All `bincode` call
   sites go through `to_bytes` / `from_bytes`. Argon2 and the cipher crates are
   optimised in dev builds: unit tests 203 s -> 6 s. 157 tests.
+- Loop 3 (2026-10-01): v2 containers now use XChaCha20-Poly1305 with a
+  24-byte random nonce (AEAD id 2); the 96-bit construction is kept only to
+  read v1. The v2 layout from loop 2 never shipped, so id 1 is simply not a
+  valid v2 algorithm. Known-answer tests: RFC 8439 2.8.2, the XChaCha draft
+  A.3.1 vector, and an Argon2id output computed with the reference C
+  implementation. `EncryptedSecret::nonce()` now returns `&[u8]`. 160 tests.

@@ -3,7 +3,7 @@
 use crate::crypto::{defaults, CryptoError, CryptoResult, DerivedKey, KdfParams};
 use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
-    ChaCha20Poly1305, Nonce,
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -16,8 +16,17 @@ pub const CONTAINER_MAGIC: [u8; 4] = *b"CCRY";
 pub const CONTAINER_VERSION: u8 = 2;
 
 /// Algorithm identifiers stored in the container header.
-const ALG_CHACHA20_POLY1305: u8 = 1;
+///
+/// Id 1 is reserved for ChaCha20-Poly1305 with a 96-bit nonce, which is what
+/// version 1 containers use; it is never written into a version 2 header.
+const ALG_XCHACHA20_POLY1305: u8 = 2;
 const KDF_ARGON2ID_V13: u8 = 1;
+
+/// Nonce length of a version 2 container (XChaCha20-Poly1305, 192 bits).
+///
+/// A random 96-bit nonce has a birthday bound near 2^32 messages per key. At
+/// 192 bits a random nonce is safe for any realistic number of messages.
+pub const XNONCE_LENGTH: usize = 24;
 
 /// Largest metadata block accepted when parsing a container.
 const MAX_METADATA_LEN: usize = 64 * 1024;
@@ -34,16 +43,16 @@ const fn legacy_version() -> u8 {
 /// offset  size  field
 ///      0     4  magic "CCRY"
 ///      4     1  format version (2)
-///      5     1  AEAD id   (1 = ChaCha20-Poly1305)
+///      5     1  AEAD id   (2 = XChaCha20-Poly1305)
 ///      6     1  KDF id    (1 = Argon2id v1.3)
 ///      7     4  Argon2 memory cost, KiB, little endian
 ///     11     4  Argon2 passes, little endian
 ///     15     4  Argon2 lanes, little endian
 ///     19    32  salt
-///     51    12  nonce
-///     63     4  metadata length N, little endian
-///     67     N  metadata, JSON
-///   67+N     …  ciphertext and 16-byte tag
+///     51    24  nonce
+///     75     4  metadata length N, little endian
+///     79     N  metadata, JSON
+///   79+N     …  ciphertext and 16-byte tag
 /// ```
 ///
 /// Everything before the ciphertext is passed to the AEAD as associated data,
@@ -51,14 +60,15 @@ const fn legacy_version() -> u8 {
 /// authentication.
 ///
 /// Version 1 was a bare `bincode` struct with no magic, no version and
-/// unauthenticated metadata, always derived with [`KdfParams::V1`]. It is
-/// still read, never written.
+/// unauthenticated metadata, always derived with [`KdfParams::V1`] and
+/// encrypted with ChaCha20-Poly1305 under a 96-bit nonce. It is still read,
+/// never written.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EncryptedSecret {
     /// Encrypted data
     ciphertext: Vec<u8>,
-    /// Nonce used for encryption
-    nonce: [u8; defaults::NONCE_LENGTH],
+    /// Nonce used for encryption: 24 bytes in version 2, 12 in version 1
+    nonce: Vec<u8>,
     /// Salt used for key derivation
     salt: [u8; defaults::SALT_LENGTH],
     /// Metadata. Not encrypted; authenticated from format version 2.
@@ -205,13 +215,13 @@ impl EncryptedSecret {
         key: &DerivedKey,
         metadata: Option<SecretMetadata>,
     ) -> CryptoResult<Self> {
-        let nonce_bytes = crate::crypto::keys::SecureRandom::generate_nonce()?;
+        let nonce_bytes = crate::crypto::keys::SecureRandom::generate_bytes(XNONCE_LENGTH)?;
         let kdf = key.kdf_params();
         kdf.validate()?;
 
         let mut secret = Self {
             ciphertext: Vec::new(),
-            nonce: nonce_bytes,
+            nonce: nonce_bytes.clone(),
             salt: *key.salt(),
             metadata: metadata.unwrap_or_default(),
             version: CONTAINER_VERSION,
@@ -219,10 +229,10 @@ impl EncryptedSecret {
         };
 
         let header = secret.header_bytes()?;
-        let cipher = ChaCha20Poly1305::new(key.key());
+        let cipher = XChaCha20Poly1305::new(key.key());
         secret.ciphertext = cipher
             .encrypt(
-                Nonce::from_slice(&nonce_bytes),
+                XNonce::from_slice(&nonce_bytes),
                 Payload {
                     msg: plaintext.as_bytes(),
                     aad: &header,
@@ -246,15 +256,21 @@ impl EncryptedSecret {
             return Err(CryptoError::decryption("Salt mismatch"));
         }
 
-        let nonce = Nonce::from_slice(&self.nonce);
-        let cipher = ChaCha20Poly1305::new(key.key());
-
         let plaintext_bytes = match self.version {
-            1 => cipher.decrypt(nonce, self.ciphertext.as_slice()),
+            1 => {
+                if self.nonce.len() != defaults::NONCE_LENGTH {
+                    return Err(CryptoError::decryption("Invalid nonce length"));
+                }
+                ChaCha20Poly1305::new(key.key())
+                    .decrypt(Nonce::from_slice(&self.nonce), self.ciphertext.as_slice())
+            }
             CONTAINER_VERSION => {
+                if self.nonce.len() != XNONCE_LENGTH {
+                    return Err(CryptoError::decryption("Invalid nonce length"));
+                }
                 let header = self.header_bytes()?;
-                cipher.decrypt(
-                    nonce,
+                XChaCha20Poly1305::new(key.key()).decrypt(
+                    XNonce::from_slice(&self.nonce),
                     Payload {
                         msg: self.ciphertext.as_slice(),
                         aad: &header,
@@ -284,10 +300,10 @@ impl EncryptedSecret {
             )));
         }
 
-        let mut out = Vec::with_capacity(67 + metadata.len());
+        let mut out = Vec::with_capacity(79 + metadata.len());
         out.extend_from_slice(&CONTAINER_MAGIC);
         out.push(self.version);
-        out.push(ALG_CHACHA20_POLY1305);
+        out.push(ALG_XCHACHA20_POLY1305);
         out.push(KDF_ARGON2ID_V13);
         out.extend_from_slice(&self.kdf.m_cost.to_le_bytes());
         out.extend_from_slice(&self.kdf.t_cost.to_le_bytes());
@@ -320,7 +336,7 @@ impl EncryptedSecret {
     }
 
     /// Get the nonce used for encryption
-    pub fn nonce(&self) -> &[u8; defaults::NONCE_LENGTH] {
+    pub fn nonce(&self) -> &[u8] {
         &self.nonce
     }
 
@@ -346,9 +362,14 @@ impl EncryptedSecret {
     /// ciphertext was produced without the authenticated header.
     pub fn to_bytes(&self) -> CryptoResult<Vec<u8>> {
         if self.version == 1 {
+            let nonce: [u8; defaults::NONCE_LENGTH] = self
+                .nonce
+                .as_slice()
+                .try_into()
+                .map_err(|_| CryptoError::serialization("Invalid nonce length"))?;
             return bincode::serialize(&LegacyV1 {
                 ciphertext: self.ciphertext.clone(),
-                nonce: self.nonce,
+                nonce,
                 salt: self.salt,
                 metadata: self.metadata.clone(),
             })
@@ -382,7 +403,7 @@ impl EncryptedSecret {
 
         Ok(Self {
             ciphertext: legacy.ciphertext,
-            nonce: legacy.nonce,
+            nonce: legacy.nonce.to_vec(),
             salt: legacy.salt,
             metadata: legacy.metadata,
             version: 1,
@@ -415,7 +436,7 @@ impl EncryptedSecret {
             )));
         }
         let alg = take(bytes, &mut at, 1)?[0];
-        if alg != ALG_CHACHA20_POLY1305 {
+        if alg != ALG_XCHACHA20_POLY1305 {
             return Err(CryptoError::serialization(format!(
                 "Unsupported AEAD id {}",
                 alg
@@ -438,8 +459,7 @@ impl EncryptedSecret {
 
         let mut salt = [0u8; defaults::SALT_LENGTH];
         salt.copy_from_slice(take(bytes, &mut at, defaults::SALT_LENGTH)?);
-        let mut nonce = [0u8; defaults::NONCE_LENGTH];
-        nonce.copy_from_slice(take(bytes, &mut at, defaults::NONCE_LENGTH)?);
+        let nonce = take(bytes, &mut at, XNONCE_LENGTH)?.to_vec();
 
         let metadata_len = take_u32(bytes, &mut at)? as usize;
         if metadata_len > MAX_METADATA_LEN {
@@ -489,7 +509,7 @@ impl fmt::Debug for EncryptedSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EncryptedSecret")
             .field("ciphertext_len", &self.ciphertext.len())
-            .field("nonce", &hex::encode(self.nonce))
+            .field("nonce", &hex::encode(&self.nonce))
             .field("salt", &hex::encode(self.salt))
             .field("metadata", &self.metadata)
             .field("version", &self.version)
@@ -642,7 +662,10 @@ mod tests {
         let bytes = encrypted.to_bytes().unwrap();
         assert_eq!(&bytes[..4], b"CCRY");
         assert_eq!(bytes[4], 2);
+        assert_eq!(bytes[5], 2, "AEAD id must be XChaCha20-Poly1305");
         assert_eq!(u32::from_le_bytes(bytes[7..11].try_into().unwrap()), 65536);
+        assert_eq!(encrypted.nonce().len(), 24);
+        assert_eq!(&bytes[51..75], encrypted.nonce());
 
         let parsed = EncryptedSecret::from_bytes(&bytes).unwrap();
         assert_eq!(parsed.version(), 2);
@@ -753,13 +776,18 @@ mod tests {
         .unwrap();
         let bytes = encrypted.to_bytes().unwrap();
 
-        for len in 0..67 {
+        for len in 0..79 {
             assert!(EncryptedSecret::from_bytes(&bytes[..len]).is_err());
         }
 
         let mut future = bytes.clone();
         future[4] = 3;
         assert!(EncryptedSecret::from_bytes(&future).is_err());
+
+        // AEAD id 1 (96-bit nonce) is not a valid version 2 algorithm.
+        let mut downgraded = bytes.clone();
+        downgraded[5] = 1;
+        assert!(EncryptedSecret::from_bytes(&downgraded).is_err());
 
         assert!(EncryptedSecret::from_bytes(b"API_KEY=hunter2\n").is_err());
     }
@@ -771,6 +799,7 @@ mod tests {
         let secret = EncryptedSecret::from_bytes(bytes).unwrap();
 
         assert_eq!(secret.version(), 1);
+        assert_eq!(secret.nonce().len(), 12);
         assert_eq!(secret.kdf_params(), KdfParams::V1);
         let plaintext = secret
             .decrypt_with_password("correct horse battery staple")
@@ -779,6 +808,89 @@ mod tests {
 
         // Re-serialising a v1 secret must not change its bytes.
         assert_eq!(secret.to_bytes().unwrap(), bytes);
+    }
+
+    const KAT_PLAINTEXT: &[u8] = b"Ladies and Gentlemen of the class of '99: \
+If I could offer you only one tip for the future, sunscreen would be it.";
+
+    fn kat_key() -> chacha20poly1305::Key {
+        let bytes: Vec<u8> = (0x80u8..=0x9f).collect();
+        *chacha20poly1305::Key::from_slice(&bytes)
+    }
+
+    /// RFC 8439 section 2.8.2. Pins the cipher that reads version 1 containers.
+    #[test]
+    fn test_chacha20poly1305_rfc8439_vector() {
+        let nonce = hex::decode("070000004041424344454647").unwrap();
+        let aad = hex::decode("50515253c0c1c2c3c4c5c6c7").unwrap();
+        let expected = hex::decode(concat!(
+            "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6",
+            "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36",
+            "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc",
+            "3ff4def08e4b7a9de576d26586cec64b6116",
+            "1ae10b594f09e26a7e902ecbd0600691",
+        ))
+        .unwrap();
+
+        let out = ChaCha20Poly1305::new(&kat_key())
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: KAT_PLAINTEXT,
+                    aad: &aad,
+                },
+            )
+            .unwrap();
+        assert_eq!(out, expected);
+    }
+
+    /// draft-irtf-cfrg-xchacha-03 appendix A.3.1. Pins the cipher that writes
+    /// and reads version 2 containers.
+    #[test]
+    fn test_xchacha20poly1305_draft_vector() {
+        let nonce = hex::decode("404142434445464748494a4b4c4d4e4f5051525354555657").unwrap();
+        let aad = hex::decode("50515253c0c1c2c3c4c5c6c7").unwrap();
+        let expected = hex::decode(concat!(
+            "bd6d179d3e83d43b9576579493c0e939572a1700252bfaccbed2902c21396cbb",
+            "731c7f1b0b4aa6440bf3a82f4eda7e39ae64c6708c54c216cb96b72e1213b452",
+            "2f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff9",
+            "21f9664c97637da9768812f615c68b13b52e",
+            "c0875924c1c7987947deafd8780acf49",
+        ))
+        .unwrap();
+
+        let out = XChaCha20Poly1305::new(&kat_key())
+            .encrypt(
+                XNonce::from_slice(&nonce),
+                Payload {
+                    msg: KAT_PLAINTEXT,
+                    aad: &aad,
+                },
+            )
+            .unwrap();
+        assert_eq!(out, expected);
+    }
+
+    /// Argon2id must keep producing the same key for the same inputs, or
+    /// every existing container becomes unreadable. The expected value was
+    /// computed with the reference C implementation (argon2-cffi), not with
+    /// this crate.
+    #[test]
+    fn test_argon2id_derivation_is_pinned() {
+        let key = DerivedKey::derive(
+            "correct horse battery staple",
+            &[0x24u8; defaults::SALT_LENGTH],
+            KdfParams {
+                m_cost: 64,
+                t_cost: 2,
+                p_cost: 1,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            hex::encode(key.key()),
+            "efc04a3a05fc96203f34f09829a466492359c6aff1b5d1906a3ef6026f4a27da"
+        );
     }
 
     #[test]
