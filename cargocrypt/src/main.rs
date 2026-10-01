@@ -201,6 +201,35 @@ async fn main() -> CryptoResult<()> {
     Ok(())
 }
 
+/// Resolve the password used by the git clean/smudge filters.
+///
+/// Order: `CARGOCRYPT_PASSWORD`, then `git config cargocrypt.password`.
+/// There is deliberately no fallback: a filter that cannot find a password must
+/// fail, otherwise files are "encrypted" under a publicly known constant.
+fn git_filter_password() -> CryptoResult<String> {
+    if let Ok(password) = std::env::var("CARGOCRYPT_PASSWORD") {
+        if !password.is_empty() {
+            return Ok(password);
+        }
+    }
+
+    let from_git_config = std::process::Command::new("git")
+        .args(["config", "--get", "cargocrypt.password"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|s| s.trim_end_matches(['\r', '\n']).to_string())
+        .filter(|s| !s.is_empty());
+
+    from_git_config.ok_or_else(|| CargoCryptError::Config {
+        message: "No password available for the CargoCrypt git filter".to_string(),
+        suggestion: Some(
+            "Set the CARGOCRYPT_PASSWORD environment variable before running git".to_string(),
+        ),
+    })
+}
+
 async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
     use cargocrypt::git::{GitAttributes, GitHooks, GitIgnoreManager, GitIntegration};
 
@@ -263,24 +292,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
                 .read_to_end(&mut input)
                 .map_err(cargocrypt::error::CargoCryptError::from)?;
 
-            // Get password from git config or environment
-            let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
-                // Try to read from git config
-                std::process::Command::new("git")
-                    .args(["config", "--get", "cargocrypt.password"])
-                    .output()
-                    .ok()
-                    .and_then(|output| {
-                        if output.status.success() {
-                            String::from_utf8(output.stdout)
-                                .ok()
-                                .map(|s| s.trim().to_string())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_else(|| "default-password".to_string())
-            });
+            let password = git_filter_password()?;
 
             let crypt = CargoCrypt::new().await?;
             let encrypted = crypt.crypto().encrypt_data(&input, &password).await?;
@@ -307,24 +319,7 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
                 .read_to_end(&mut input)
                 .map_err(cargocrypt::error::CargoCryptError::from)?;
 
-            // Get password from git config or environment
-            let password = std::env::var("CARGOCRYPT_PASSWORD").unwrap_or_else(|_| {
-                // Try to read from git config
-                std::process::Command::new("git")
-                    .args(["config", "--get", "cargocrypt.password"])
-                    .output()
-                    .ok()
-                    .and_then(|output| {
-                        if output.status.success() {
-                            String::from_utf8(output.stdout)
-                                .ok()
-                                .map(|s| s.trim().to_string())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_else(|| "default-password".to_string())
-            });
+            let password = git_filter_password()?;
 
             let crypt = CargoCrypt::new().await?;
 
@@ -337,11 +332,12 @@ async fn handle_git_command(cmd: GitCommands) -> CryptoResult<()> {
                                 .write_all(&decrypted)
                                 .map_err(cargocrypt::error::CargoCryptError::from)?;
                         }
-                        Err(_) => {
-                            // If decryption fails, output original (might not be encrypted)
-                            io::stdout()
-                                .write_all(&input)
-                                .map_err(cargocrypt::error::CargoCryptError::from)?;
+                        Err(e) => {
+                            // Fail closed: the blob parsed as a CargoCrypt container but
+                            // did not authenticate. Writing the ciphertext into the working
+                            // tree would silently hand the user garbage, so make git report
+                            // the smudge failure instead.
+                            return Err(e.into());
                         }
                     }
                 }
