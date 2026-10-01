@@ -11,6 +11,7 @@ pub mod mock;
 pub mod secrets;
 pub mod security;
 pub mod store;
+pub mod stream;
 
 pub use algorithm::{Algorithm, AlgorithmExt};
 pub use engine::{

@@ -40,6 +40,7 @@ pub use crate::detection::{
 pub use crate::error::{CargoCryptError, CryptoResult, ErrorKind};
 
 // Core modules
+pub mod atomic;
 pub mod core;
 pub mod crypto;
 pub mod error;

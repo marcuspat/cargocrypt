@@ -76,7 +76,7 @@ Ordered by how badly they undercut what the README promises.
       header tampering fails authentication; v1 fixture still decrypts.
 - [x] 3. XChaCha20-Poly1305 for v2 containers (24-byte nonce). Known-answer
       tests against the draft-irtf-cfrg-xchacha vector and RFC 8439.
-- [ ] 4. Streaming file encryption: 64 KiB chunked STREAM construction,
+- [x] 4. Streaming file encryption: 64 KiB chunked STREAM construction,
       constant memory, final-chunk flag so truncation is detected; atomic
       output (temp file, fsync, rename) with 0600 permissions.
 - [ ] 5. `cargocrypt scan [paths]`: expose the detector, honour `.gitignore`,
@@ -89,6 +89,11 @@ Ordered by how badly they undercut what the README promises.
 - [ ] 7. Password handling: `Zeroizing<String>` through CLI and engine,
       `--password-file` / `CARGOCRYPT_PASSWORD_FILE`, stop trimming passwords,
       drop the `git config cargocrypt.password` source (warn if present).
+      Also found in loop 4, same area: `.cargocrypt/config.toml` is written by
+      `init` but never read (`CargoCrypt::new` always uses defaults), and
+      `backup_originals` defaults to true, which leaves a world-readable
+      plaintext `<file>.backup` beside every encrypted file. Load the config;
+      make the backup opt-in.
 - [ ] 8. Make every target compile and lint: repair or delete
       `benches/vs_rustyvault.rs`, fix test lints, CI runs
       `clippy --all-targets -D warnings`. (Test time is already handled:
@@ -134,3 +139,13 @@ Ordered by how badly they undercut what the README promises.
   valid v2 algorithm. Known-answer tests: RFC 8439 2.8.2, the XChaCha draft
   A.3.1 vector, and an Argon2id output computed with the reference C
   implementation. `EncryptedSecret::nonce()` now returns `&[u8]`. 160 tests.
+- Loop 4 (2026-10-01): `encrypt_file` writes a streaming container (format
+  version 3): 64 KiB chunks, STREAM construction over XChaCha20-Poly1305 via
+  the `aead` crate's `stream` module, header bound to every chunk, final-chunk
+  flag so truncation at any length fails. Output goes through a new
+  `AtomicFile` (random sibling temp, mode 0600, fsync, rename; removed on
+  failure), so a failed decryption leaves nothing on disk. `decrypt_file`
+  reads v3, v2 and v1. The builder ignored `config.performance_profile`; it
+  now reaches the engine and the file header. Measured: 300 MB file, 80 MB
+  peak RSS on decrypt (64 MiB of that is Argon2). Removed a working-directory
+  race between two existing integration tests. 176 tests.
