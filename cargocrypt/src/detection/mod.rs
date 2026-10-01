@@ -39,6 +39,7 @@ pub mod detector;
 pub mod entropy;
 pub mod findings;
 pub mod patterns;
+pub mod report;
 pub mod rules;
 pub mod scanner;
 
@@ -46,6 +47,7 @@ pub use detector::{DetectionConfig, ScanOptions, SecretDetector};
 pub use entropy::{EntropyAnalyzer, EntropyResult};
 pub use findings::{ConfidenceLevel, Finding, FoundSecret};
 pub use patterns::{PatternMatch, SecretPattern, SecretType};
+pub use report::{ReportFinding, ReportFormat, ScanReport};
 pub use rules::{CustomRule, RuleEngine, RuleType};
 pub use scanner::{FileScanner, ScanResult};
 

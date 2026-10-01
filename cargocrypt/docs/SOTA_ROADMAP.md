@@ -79,9 +79,16 @@ Ordered by how badly they undercut what the README promises.
 - [x] 4. Streaming file encryption: 64 KiB chunked STREAM construction,
       constant memory, final-chunk flag so truncation is detected; atomic
       output (temp file, fsync, rename) with 0600 permissions.
-- [ ] 5. `cargocrypt scan [paths]`: expose the detector, honour `.gitignore`,
+- [x] 5. `cargocrypt scan [paths]`: expose the detector, honour `.gitignore`,
       `--staged`, `--format text|json|sarif`, non-zero exit on findings.
-- [ ] 6. Scan precision: `.cargocryptignore`, inline `cargocrypt:allow`,
+- [ ] 6. Scan precision. **Measured in loop 5: scanning this repository
+      reports 1,858 findings** — 1,307 `high-entropy-string`, 357
+      `github-personal-access-token` (mostly `Cargo.lock` checksums), the rest
+      contextual matches on ordinary identifiers. In this state the scanner
+      cannot gate a commit. First cut the false positives (anchor the GitHub
+      and other token rules to their real prefixes and lengths, skip lock
+      files and hashes, stop flagging identifiers and hex digests as
+      high-entropy), then add: `.cargocryptignore`, inline `cargocrypt:allow`,
       `--baseline` file; rules for current token formats (GitHub fine-grained
       `github_pat_`, `sk-ant-`, `sk-proj-`, Slack `xox*`, Stripe restricted
       keys); a labelled fixture corpus with measured precision/recall replacing
@@ -149,3 +156,12 @@ Ordered by how badly they undercut what the README promises.
   now reaches the engine and the file header. Measured: 300 MB file, 80 MB
   peak RSS on decrypt (64 MiB of that is Argon2). Removed a working-directory
   race between two existing integration tests. 176 tests.
+- Loop 5 (2026-10-01): `cargocrypt scan [paths] [--staged] [--format
+  text|json|sarif] [--min-confidence] [--output] [--no-fail]`, exit 0 clean /
+  1 findings / 2 error. Works outside a Cargo project. Scans dotfiles (the
+  library default skipped `.env`). `--staged` reads blobs from the index.
+  Reports never contain the secret: a four-character preview plus a
+  fingerprint (truncated SHA-256), which SARIF carries as
+  `partialFingerprints`. Fixed a panic in `FoundSecret::new`, which sliced at
+  byte 47 and could land inside a multi-byte character. 191 tests. Running it
+  on this repo exposed the false-positive rate recorded under item 6.

@@ -36,6 +36,28 @@ enum Commands {
         #[arg(long)]
         password_stdin: bool,
     },
+    /// Scan files for secrets committed in plain text
+    ///
+    /// Exits 0 when nothing is found, 1 when secrets are found, 2 on error.
+    Scan {
+        /// Files or directories to scan (default: current directory)
+        paths: Vec<PathBuf>,
+        /// Scan the staged contents of files in the git index
+        #[arg(long, conflicts_with = "paths")]
+        staged: bool,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = ScanFormat::Text)]
+        format: ScanFormat,
+        /// Minimum confidence (0.0 to 1.0) for a finding to be reported
+        #[arg(long, default_value_t = 0.5)]
+        min_confidence: f64,
+        /// Write the report to a file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Exit 0 even when secrets are found
+        #[arg(long)]
+        no_fail: bool,
+    },
     /// Show configuration
     Config,
     /// Launch interactive TUI for all CargoCrypt operations
@@ -46,6 +68,13 @@ enum Commands {
     /// Monitoring and performance commands
     #[command(subcommand)]
     Monitor(MonitorCommands),
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ScanFormat {
+    Text,
+    Json,
+    Sarif,
 }
 
 #[derive(Subcommand)]
@@ -173,6 +202,25 @@ async fn main() -> CryptoResult<()> {
             let decrypted_file = crypt.decrypt_file(&file, &password).await?;
             println!("✅ File decrypted: {}", decrypted_file.display());
         }
+        Commands::Scan {
+            paths,
+            staged,
+            format,
+            min_confidence,
+            output,
+            no_fail,
+        } => {
+            let code = match run_scan(paths, staged, format, min_confidence, output).await {
+                Ok(true) => 0,
+                Ok(false) if no_fail => 0,
+                Ok(false) => 1,
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    2
+                }
+            };
+            std::process::exit(code);
+        }
         Commands::Config => {
             let crypt = CargoCrypt::new().await?;
             let config = crypt.config().await;
@@ -199,6 +247,108 @@ async fn main() -> CryptoResult<()> {
     }
 
     Ok(())
+}
+
+/// Run a secret scan and write the report. Returns whether the scan was clean.
+async fn run_scan(
+    paths: Vec<PathBuf>,
+    staged: bool,
+    format: ScanFormat,
+    min_confidence: f64,
+    output: Option<PathBuf>,
+) -> CryptoResult<bool> {
+    use cargocrypt::detection::{ReportFormat, ScanOptions, ScanReport, SecretDetector};
+
+    if !(0.0..=1.0).contains(&min_confidence) {
+        return Err(CargoCryptError::Config {
+            message: format!(
+                "--min-confidence must be between 0 and 1, got {}",
+                min_confidence
+            ),
+            suggestion: None,
+        });
+    }
+
+    let detector = SecretDetector::new();
+    let mut options = ScanOptions::default().with_min_confidence(min_confidence);
+    options.include_low_confidence = true; // --min-confidence is the only threshold
+    options.sort_by_confidence = false;
+    // Dotfiles are where secrets live (`.env`, `.npmrc`); never skip them.
+    options.scan_config.scan_hidden = true;
+
+    let mut findings = Vec::new();
+    if staged {
+        for path in staged_files()? {
+            // Scan what is about to be committed, not the working tree copy.
+            let blob = std::process::Command::new("git")
+                .arg("show")
+                .arg(format!(":{}", path))
+                .output()?;
+            if !blob.status.success() {
+                continue;
+            }
+            if let Ok(content) = String::from_utf8(blob.stdout) {
+                findings.extend(
+                    detector
+                        .scan_content(&content, &path)?
+                        .into_iter()
+                        .filter(|f| f.confidence >= min_confidence),
+                );
+            }
+        }
+    } else {
+        let paths = if paths.is_empty() {
+            vec![PathBuf::from(".")]
+        } else {
+            paths
+        };
+        for path in &paths {
+            if path.is_dir() {
+                findings.extend(detector.scan_directory(path, &options).await?);
+            } else if path.is_file() {
+                findings.extend(detector.scan_file(path, &options).await?);
+            } else {
+                return Err(CargoCryptError::from(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{}: no such file or directory", path.display()),
+                )));
+            }
+        }
+    }
+
+    let report = ScanReport::new(&findings, None);
+    let rendered = report.render(match format {
+        ScanFormat::Text => ReportFormat::Text,
+        ScanFormat::Json => ReportFormat::Json,
+        ScanFormat::Sarif => ReportFormat::Sarif,
+    });
+    match output {
+        Some(path) => std::fs::write(path, rendered)?,
+        None => print!("{}", rendered),
+    }
+    Ok(report.is_clean())
+}
+
+/// Paths added, copied or modified in the git index.
+fn staged_files() -> CryptoResult<Vec<String>> {
+    let out = std::process::Command::new("git")
+        .args(["diff", "--cached", "--name-only", "--diff-filter=ACM", "-z"])
+        .output()?;
+    if !out.status.success() {
+        return Err(CargoCryptError::Config {
+            message: format!(
+                "git diff --cached failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            suggestion: Some("Run `cargocrypt scan --staged` inside a git repository".to_string()),
+        });
+    }
+    Ok(out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(|p| String::from_utf8_lossy(p).into_owned())
+        .collect())
 }
 
 /// Resolve the password used by the git clean/smudge filters.
