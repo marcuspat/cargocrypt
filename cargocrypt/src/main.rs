@@ -315,10 +315,13 @@ async fn main() -> CryptoResult<()> {
             let config = crypt.config().await;
             println!("📋 Current configuration:");
             println!("  Performance Profile: {:?}", config.performance_profile);
+            // The profile decides the cost; `[key_params]` in the config
+            // file is not used.
+            let kdf = config.performance_profile.kdf_params();
             println!("  Key derivation: Argon2id");
-            println!("  Memory cost: {} KiB", config.key_params.memory_cost);
-            println!("  Time cost: {} iterations", config.key_params.time_cost);
-            println!("  Parallelism: {}", config.key_params.parallelism);
+            println!("  Memory cost: {} KiB", kdf.m_cost);
+            println!("  Time cost: {} passes", kdf.t_cost);
+            println!("  Parallelism: {}", kdf.p_cost);
             println!("  Auto-backup: {}", config.file_ops.backup_originals);
             println!("  Fail-secure: {}", config.security.fail_secure);
         }
@@ -738,6 +741,7 @@ async fn handle_monitor_command(cmd: MonitorCommands) -> CryptoResult<()> {
 
         MonitorCommands::Dashboard => {
             println!("🖥️  Starting monitoring dashboard...");
+            println!("Note: the dashboard shows sample data; it is not wired to live metrics yet.");
             println!("Press 'q' to quit, arrow keys or 1-5 to navigate");
 
             // Create and run monitoring dashboard

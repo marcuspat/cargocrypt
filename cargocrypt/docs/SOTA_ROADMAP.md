@@ -123,7 +123,7 @@ Ordered by how badly they undercut what the README promises.
       only as a library; (c) `revoke_member_tokens` still writes a
       revocation list for tokens that no longer exist; (d) removal should
       drive key rotation and re-encryption of affected files.
-- [ ] 13. Hygiene and honesty: the monitoring dashboard
+- [x] 13. Hygiene and honesty: the monitoring dashboard
       (`tui/monitoring.rs`) renders hard-coded sample rows as if they were
       live statistics: wire it to real metrics or label it; `[key_params]` in the config is parsed but
       ignored (the profile sets the KDF cost): wire it or remove it; delete `.swarm/`, `test_output.log`,
@@ -275,3 +275,25 @@ Ordered by how badly they undercut what the README promises.
   empty). The module docs now state what is and is not protected: the
   member list and audit log are still unsigned. `get_shared_key` takes a
   secret key (API change); new dependency `x25519-dalek`. 239 tests.
+- Loop 13 (2026-10-01): deleted `.swarm/`, `test_output.log`,
+  `src/core_backup.rs` and `src/tui.rs` (3,500 lines that were never
+  compiled). `SECURITY.md` and both READMEs rewritten to describe the code as
+  it is, including what is not protected. Reviewing the git integration for
+  the README found three more bugs, all fixed with end-to-end tests
+  (`tests/git_hooks_test.rs`): the pre-commit hook called
+  `cargocrypt git install-hooks --check-secrets`, a flag that never existed,
+  so it blocked every commit; the configured filter commands were
+  `cargocrypt filter-clean`, which is not a command; and `.gitattributes`
+  lines were written as `pattern cargocrypt-encrypt` instead of
+  `pattern filter=cargocrypt-encrypt`, so git never ran the filter at all.
+  Transparent encryption now round-trips through real git. The pre-push hook
+  printed "Encryption validation passed" without checking anything; it now
+  does an advisory magic-byte check. The monitoring dashboard, whose every
+  number is a hard-coded placeholder, says "SAMPLE DATA" on screen.
+  `cargocrypt config` prints the profile's real KDF cost; `[key_params]` is
+  documented as ignored. Issue #1 is written up in
+  `docs/ISSUE_1_FINDINGS.md`: a false positive (AWS documentation example key
+  and a placeholder in the scanner's tests), confirmed at the cited commit
+  and across all history. Not done: the dashboard is labelled, not wired to
+  real metrics; clean-filter output is still randomised, so git can show
+  filtered files as modified. 242 tests.

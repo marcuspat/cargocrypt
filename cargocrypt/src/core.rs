@@ -77,7 +77,9 @@ pub struct CargoCrypt {
 pub struct CryptoConfig {
     /// Default performance profile for encryption
     pub performance_profile: PerformanceProfile,
-    /// Key derivation parameters
+    /// Unused. The key derivation cost is set by `performance_profile`;
+    /// these values are parsed for compatibility with existing config files
+    /// and otherwise ignored.
     pub key_params: KeyDerivationConfig,
     /// File operation settings
     pub file_ops: FileOperationConfig,

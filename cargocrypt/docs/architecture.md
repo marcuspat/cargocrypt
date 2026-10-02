@@ -1,5 +1,12 @@
 # CargoCrypt Architecture
 
+> **Historical design notes.** This document predates the current
+> implementation and describes intentions as well as features. Where it
+> disagrees with the README or `SECURITY.md`, those are correct. In
+> particular there is no machine-learned detection, no AES-GCM mode, and the
+> output examples below are illustrative rather than captured.
+
+
 > **Zero-config, git-native secret management that feels like a natural cargo extension**
 
 ## Table of Contents

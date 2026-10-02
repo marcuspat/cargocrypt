@@ -446,6 +446,13 @@ impl MonitoringDashboard {
 
     fn render_status_bar(&self, f: &mut Frame, area: Rect) {
         let status_text = vec![Line::from(vec![
+            // Every figure on these tabs is a layout placeholder. Nothing is
+            // read from `MonitoringManager` yet, and saying so on screen is
+            // better than showing invented numbers as if they were live.
+            Span::styled(
+                "SAMPLE DATA, not live metrics. ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::styled("Press ", Style::default().fg(Color::Gray)),
             Span::styled(
                 "q",

@@ -42,8 +42,8 @@ impl Default for AttributeConfig {
         filters.insert(
             "cargocrypt-encrypt".to_string(),
             FilterConfig {
-                clean: "cargocrypt filter-clean %f".to_string(),
-                smudge: "cargocrypt filter-smudge %f".to_string(),
+                clean: "cargocrypt git filter-clean %f".to_string(),
+                smudge: "cargocrypt git filter-smudge %f".to_string(),
                 required: true,
             },
         );
@@ -97,7 +97,9 @@ impl EncryptionPattern {
 
     /// Convert to gitattributes line format
     pub fn to_line(&self) -> String {
-        let mut line = format!("{} {}", self.pattern, self.attribute);
+        // `filter=<name>` is what makes git run the clean/smudge filter. A
+        // bare word only sets an attribute of that name, which git ignores.
+        let mut line = format!("{} filter={}", self.pattern, self.attribute);
 
         for attr in &self.extra_attrs {
             line.push(' ');
@@ -113,7 +115,11 @@ impl EncryptionPattern {
 
         if parts.len() >= 2 {
             let pattern = parts[0].to_string();
-            let attribute = parts[1].to_string();
+            // Accept the bare form written by earlier versions as well.
+            let attribute = parts[1]
+                .strip_prefix("filter=")
+                .unwrap_or(parts[1])
+                .to_string();
             let extra_attrs = parts[2..].iter().map(|s| s.to_string()).collect();
 
             Some(Self {
@@ -508,7 +514,12 @@ mod tests {
     fn test_encryption_pattern() {
         let pattern = EncryptionPattern::new("*.secret", "cargocrypt-encrypt").with_attr("binary");
 
-        assert_eq!(pattern.to_line(), "*.secret cargocrypt-encrypt binary");
+        assert_eq!(
+            pattern.to_line(),
+            "*.secret filter=cargocrypt-encrypt binary"
+        );
+        let reparsed = EncryptionPattern::from_line(&pattern.to_line()).unwrap();
+        assert_eq!(reparsed.attribute, "cargocrypt-encrypt");
 
         // Test parsing
         let parsed = EncryptionPattern::from_line("*.key cargocrypt-encrypt required").unwrap();
