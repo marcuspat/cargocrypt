@@ -205,4 +205,5 @@ Ordered by how badly they undercut what the README promises.
   VM); the README had claimed 1.0-1.2 GB/s. The profile table now matches
   the code. Placeholder tests (`assert!(true)`, an empty mock module, a test
   with no assertions) are removed or made real; the performance example no
-  longer prints an invented memory figure. 216 tests.
+  longer prints an invented memory figure. 215 tests (one placeholder
+  removed).

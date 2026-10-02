@@ -1462,11 +1462,16 @@ commit da39a3ee5e6b4b0d3255bfef95601890afd80709
     #[test]
     fn test_contextual_detection() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
-        let content = "api_key = sk_live_abcdef1234567890\ntoken: ghp_1234567890abcdef1234567890abcdef12345678";
+        // The second value is assembled here so no token-shaped literal is
+        // committed. (A counting run such as "1234567890abcdef…" would be
+        // dismissed as a placeholder, by design.)
+        let content = format!(
+            "api_key = sk_live_abcdef1234567890\ntoken: {}{}",
+            "q7Lm2Xv9Rt4Kp8Zs", "Yw3Nc6Hb1Jd5Fg0A"
+        );
         let path = Path::new("config.rs");
 
-        let findings = scanner.scan_content(content, path).unwrap();
-        assert!(!findings.is_empty());
+        let findings = scanner.scan_content(&content, path).unwrap();
 
         // Which detector claims each value depends on rule precedence; what
         // matters is that both assignments are reported.
