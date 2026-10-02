@@ -4,6 +4,10 @@ on:
     branches: [ main ]
   pull_request:
   workflow_dispatch:
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -18,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: cargocrypt
-      - run: cargo build --release
+      - run: cargo build --release --locked
       - run: cargo test
       - run: cargo fmt --check
       # Benches, examples and tests are linted too: an unchecked target rots.
@@ -27,3 +31,30 @@ jobs:
       - name: Secret scan (self)
         working-directory: .
         run: cargocrypt/target/release/cargocrypt scan .
+
+  # The crate declares rust-version in Cargo.toml; prove it builds there.
+  msrv:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cargocrypt
+      - run: cargo check --locked --all-targets
+
+  # RustSec advisories, licences, duplicate versions and crate sources.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: cargocrypt/Cargo.toml
+          command: check advisories licenses bans sources
+

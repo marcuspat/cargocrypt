@@ -105,7 +105,7 @@ Ordered by how badly they undercut what the README promises.
       `benches/vs_rustyvault.rs`, fix test lints, CI runs
       `clippy --all-targets -D warnings`. (Test time is already handled:
       loop 2 took the unit suite from ~200 s to ~6 s.)
-- [ ] 9. Supply chain: remove unused dependencies, add `deny.toml`, run
+- [x] 9. Supply chain: remove unused dependencies, add `deny.toml`, run
       `cargo-deny` and `cargo-audit` in CI, declare and test an MSRV, add
       Dependabot for cargo and actions, pin actions by SHA.
 - [ ] 10. Property tests (round trip, tamper detection, truncation) and
@@ -115,7 +115,9 @@ Ordered by how badly they undercut what the README promises.
 - [ ] 12. Team sharing review (`git/team.rs`, 1,500 lines): threat-model it,
       then move to per-recipient X25519 envelopes so adding or removing a
       member does not mean re-sharing one password.
-- [ ] 13. Hygiene and honesty: `[key_params]` in the config is parsed but
+- [ ] 13. Hygiene and honesty: the monitoring dashboard
+      (`tui/monitoring.rs`) renders hard-coded sample rows as if they were
+      live statistics: wire it to real metrics or label it; `[key_params]` in the config is parsed but
       ignored (the profile sets the KDF cost): wire it or remove it; delete `.swarm/`, `test_output.log`,
       `core_backup.rs`; rewrite `SECURITY.md` and the README tables to match
       the code; write up issue #1 with evidence and the rotation checklist.
@@ -207,3 +209,21 @@ Ordered by how badly they undercut what the README promises.
   with no assertions) are removed or made real; the performance example no
   longer prints an invented memory figure. 215 tests (one placeholder
   removed).
+- Loop 9 (2026-10-01): removed unused dependencies (`reqwest`, `rustls`,
+  `rustls-webpki`, `dialoguer`, `indicatif`, `console`, `predicates`,
+  `futures`; `anyhow` moved to dev). `cargo audit` went from 4
+  vulnerabilities and 11 warnings to 0 and 1: `cargo update` cleared `bytes`,
+  `crossbeam-epoch`, `slab`, `tracing-subscriber` and `anyhow`; `git2` 0.18 ->
+  0.21 and `ratatui` 0.24 -> 0.30 (with `crossterm` 0.29) cleared the
+  unsoundness advisories in `git2`, `lru` and `paste`. The one left is
+  `bincode` 1.x (unmaintained), kept to read v1 containers and recorded with
+  its reason in `deny.toml`. Lockfile: 345 -> 328 packages. Added `deny.toml`
+  (advisories, permissive licences only, crates.io only), a cargo-deny CI job,
+  an MSRV job (`rust-version = "1.88"`, the highest `rust-version` among the
+  locked dependencies), `--locked` builds, read-only workflow permissions and
+  Dependabot for cargo and actions. Not done: actions are pinned by tag, not
+  by SHA. Not verified here: the MSRV build and cargo-deny's advisory check
+  run only in CI (no older toolchain or advisory-db fetch in this sandbox;
+  licences, bans and sources were checked locally with cargo-deny 0.18.3, and
+  advisories with cargo-audit). The TUI compiles against ratatui 0.30 but was
+  not exercised interactively. 215 tests.

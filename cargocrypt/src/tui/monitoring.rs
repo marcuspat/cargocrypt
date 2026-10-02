@@ -84,7 +84,10 @@ impl MonitoringDashboard {
     async fn run_app<B: Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        B::Error: 'static,
+    {
         loop {
             if self.last_update.elapsed() >= self.update_interval {
                 self.last_update = Instant::now();
@@ -124,7 +127,7 @@ impl MonitoringDashboard {
     }
 
     fn ui(&self, f: &mut Frame) {
-        let size = f.size();
+        let size = f.area();
 
         // Create the main layout
         let chunks = Layout::default()
@@ -369,22 +372,24 @@ impl MonitoringDashboard {
             Row::new(vec!["key_derivation", "3", "2.1s", "0.0%"]),
         ];
 
-        let table = Table::new(rows)
-            .widths(&[
+        let table = Table::new(
+            rows,
+            [
                 Constraint::Percentage(40),
                 Constraint::Percentage(20),
                 Constraint::Percentage(20),
                 Constraint::Percentage(20),
-            ])
-            .header(
-                Row::new(vec!["Operation", "Count", "Avg Time", "Error %"])
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Operation Stats"),
-            );
+            ],
+        )
+        .header(
+            Row::new(vec!["Operation", "Count", "Avg Time", "Error %"])
+                .style(Style::default().add_modifier(Modifier::BOLD)),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Operation Stats"),
+        );
 
         f.render_widget(table, chunks[2]);
     }

@@ -328,16 +328,6 @@ impl From<toml::de::Error> for CargoCryptError {
     }
 }
 
-/// Convert from reqwest errors
-impl From<reqwest::Error> for CargoCryptError {
-    fn from(error: reqwest::Error) -> Self {
-        Self::Network {
-            message: format!("HTTP request failed: {}", error),
-            source: Box::new(error),
-        }
-    }
-}
-
 /// Convert from git2 errors
 impl From<git2::Error> for CargoCryptError {
     fn from(error: git2::Error) -> Self {
