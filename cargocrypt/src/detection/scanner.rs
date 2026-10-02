@@ -840,9 +840,13 @@ impl FileScanner {
 
             // Skip pieces of a URL that carries no credentials (badges,
             // links): percent-encoding and query strings look random.
+            // `char_indices().next_back()` rather than `rfind(..) + 1`: the
+            // delimiter may be a multi-byte character (U+2007, U+3000).
             let word_start = content[..start_pos]
-                .rfind(|c: char| c.is_whitespace() || matches!(c, '(' | '"' | '\'' | '<'))
-                .map_or(0, |i| i + 1);
+                .char_indices()
+                .rev()
+                .find(|(_, c)| c.is_whitespace() || matches!(c, '(' | '"' | '\'' | '<'))
+                .map_or(0, |(i, c)| i + c.len_utf8());
             let word_end = content[end_pos..]
                 .find(|c: char| c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '>'))
                 .map_or(content.len(), |i| end_pos + i);
@@ -908,9 +912,23 @@ impl FileScanner {
             ),
         ];
 
-        for (keyword, pattern) in &secret_keywords {
-            let regex_pattern = format!(r"(?i){}{}", keyword, pattern);
-            if let Ok(regex) = regex::Regex::new(&regex_pattern) {
+        // Compiled once per process: building seven regexes on every call
+        // dominated the cost of scanning small inputs.
+        static COMPILED: std::sync::OnceLock<Vec<(&'static str, regex::Regex)>> =
+            std::sync::OnceLock::new();
+        let compiled = COMPILED.get_or_init(|| {
+            secret_keywords
+                .iter()
+                .filter_map(|(keyword, pattern)| {
+                    regex::Regex::new(&format!(r"(?i){}{}", keyword, pattern))
+                        .ok()
+                        .map(|regex| (*keyword, regex))
+                })
+                .collect()
+        });
+
+        for (keyword, regex) in compiled {
+            {
                 for cap in regex.captures_iter(content) {
                     if let Some(secret_match) = cap.get(1) {
                         let start = secret_match.start();
@@ -1124,7 +1142,9 @@ impl FileScanner {
         found_positions: &std::collections::HashSet<(usize, usize)>,
     ) -> Vec<(String, usize)> {
         let mut candidates = Vec::new();
-        let base64_regex = regex::Regex::new(r"[A-Za-z0-9+/]{20,}={0,2}").unwrap();
+        static BASE64: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let base64_regex = BASE64
+            .get_or_init(|| regex::Regex::new(r"[A-Za-z0-9+/]{20,}={0,2}").expect("valid regex"));
 
         for m in base64_regex.find_iter(content) {
             let start = m.start();

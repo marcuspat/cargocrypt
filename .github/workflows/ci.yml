@@ -58,3 +58,20 @@ jobs:
           manifest-path: cargocrypt/Cargo.toml
           command: check advisories licenses bans sources
 
+  # A short run of each fuzz target: catches shallow crashes on every PR.
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cargocrypt/fuzz
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz run container_parse -- -max_total_time=30 -max_len=4096
+      - run: cargo fuzz run stream_decrypt -- -max_total_time=30 -max_len=4096
+      - run: cargo fuzz run scan_content -- -max_total_time=30 -max_len=4096
+

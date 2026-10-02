@@ -11,6 +11,7 @@ homepage = "https://github.com/marcuspat/cargocrypt"
 keywords = ["cryptography", "security", "cli", "rust", "encryption"]
 categories = ["command-line-utilities", "cryptography", "development-tools"]
 readme = "README.md"
+exclude = ["fuzz/"]
 
 [[bin]]
 name = "cargocrypt"

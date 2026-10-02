@@ -108,7 +108,7 @@ Ordered by how badly they undercut what the README promises.
 - [x] 9. Supply chain: remove unused dependencies, add `deny.toml`, run
       `cargo-deny` and `cargo-audit` in CI, declare and test an MSRV, add
       Dependabot for cargo and actions, pin actions by SHA.
-- [ ] 10. Property tests (round trip, tamper detection, truncation) and
+- [x] 10. Property tests (round trip, tamper detection, truncation) and
       `cargo-fuzz` targets for the container parser; fuzz smoke job in CI.
 - [ ] 11. `cargocrypt rekey` (change password / upgrade profile and format
       without exposing plaintext on disk) and `cargocrypt verify`.
@@ -227,3 +227,18 @@ Ordered by how badly they undercut what the README promises.
   licences, bans and sources were checked locally with cargo-deny 0.18.3, and
   advisories with cargo-audit). The TUI compiles against ratatui 0.30 but was
   not exercised interactively. 215 tests.
+- Loop 10 (2026-10-01): `tests/properties.rs` (8 proptest properties):
+  container and stream round trips for arbitrary data and metadata; any
+  single-byte change, truncation or extension is rejected; the parsers and
+  the scanner never panic. The scanner property found a real panic on its
+  first run: text containing a multi-byte whitespace character (U+2007)
+  before a token crashed the URL check added in loop 6 (`rfind(..) + 1`
+  landed inside the character). Fixed; the failing seed is committed.
+  `fuzz/` holds three cargo-fuzz targets (`container_parse`,
+  `stream_decrypt`, `scan_content`) and CI runs each for 30 s. Run here for
+  75 s each with coverage instrumentation on stable (so without
+  AddressSanitizer): 13.5 M, 1.5 M and 5.5 k executions, no crashes. The
+  scanner target managed only 72 exec/s, which exposed that every call
+  recompiled eight regexes; they are now compiled once (a 10-byte scan takes
+  about 90 microseconds). Large-input throughput is unchanged at roughly
+  7-10 MiB/s and is still the scanner's weak spot. 223 tests.
