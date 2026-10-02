@@ -121,3 +121,65 @@ fn staged_mode_scans_the_index_not_the_working_tree() {
     let out = scan(&dir).arg("--staged").assert().code(1);
     assert!(String::from_utf8_lossy(&out.get_output().stdout).contains(".env"));
 }
+
+#[test]
+fn cargocryptignore_excludes_paths() {
+    let dir = tree_with_secret();
+    fs::create_dir(dir.path().join("fixtures")).unwrap();
+    fs::write(
+        dir.path().join("fixtures/sample.env"),
+        format!("AWS_ACCESS_KEY_ID={}\n", SECRET),
+    )
+    .unwrap();
+    fs::write(dir.path().join(".cargocryptignore"), "fixtures/\n.env\n").unwrap();
+
+    scan(&dir).assert().code(0);
+
+    // Only the fixture directory ignored: the real `.env` is still reported.
+    fs::write(dir.path().join(".cargocryptignore"), "fixtures/\n").unwrap();
+    let out = scan(&dir).assert().code(1);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    assert!(stdout.contains(".env:1:"));
+    assert!(!stdout.contains("fixtures"));
+}
+
+#[test]
+fn baseline_reports_only_new_secrets() {
+    let dir = tree_with_secret();
+    scan(&dir)
+        .args(["--format", "json", "--output", "baseline.json"])
+        .assert()
+        .code(1);
+    fs::write(dir.path().join(".cargocryptignore"), "baseline.json\n").unwrap();
+
+    // Nothing new since the baseline.
+    scan(&dir)
+        .args(["--baseline", "baseline.json"])
+        .assert()
+        .code(0);
+
+    // A second, different key appears.
+    fs::write(
+        dir.path().join("deploy.env"),
+        "AWS_ACCESS_KEY_ID=AKIAI44QH8DHBEXAMPLE\n",
+    )
+    .unwrap();
+    let out = scan(&dir)
+        .args(["--baseline", "baseline.json"])
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    assert!(stdout.contains("deploy.env"));
+    assert!(
+        !stdout.lines().any(|l| l.starts_with(".env:")),
+        "{}",
+        stdout
+    );
+
+    // A file that is not a report is an error, not a silent pass.
+    fs::write(dir.path().join("bogus.json"), "{}").unwrap();
+    scan(&dir)
+        .args(["--baseline", "bogus.json"])
+        .assert()
+        .code(2);
+}

@@ -21,6 +21,7 @@ pub enum SecretType {
     GitHubAppToken,
     GitHubRefreshToken,
     GitHubOAuthToken,
+    GitHubFineGrainedToken,
 
     // SSH Keys
     SshPrivateKey,
@@ -39,6 +40,10 @@ pub enum SecretType {
     TwilioApiKey,
     SlackToken,
     DiscordToken,
+    AnthropicApiKey,
+    OpenAiApiKey,
+    GoogleApiKey,
+    NpmToken,
 
     // JWT and Bearer Tokens
     JwtToken,
@@ -71,6 +76,11 @@ impl SecretType {
             SecretType::GitHubAppToken => "GitHub App Token",
             SecretType::GitHubRefreshToken => "GitHub Refresh Token",
             SecretType::GitHubOAuthToken => "GitHub OAuth Token",
+            SecretType::GitHubFineGrainedToken => "GitHub Fine-Grained Token",
+            SecretType::AnthropicApiKey => "Anthropic API Key",
+            SecretType::OpenAiApiKey => "OpenAI API Key",
+            SecretType::GoogleApiKey => "Google API Key",
+            SecretType::NpmToken => "npm Access Token",
             SecretType::SshPrivateKey => "SSH Private Key",
             SecretType::SshPublicKey => "SSH Public Key",
             SecretType::DatabaseUrl => "Database Connection String",
@@ -101,7 +111,13 @@ impl SecretType {
             SecretType::AwsAccessKey | SecretType::AwsSecretKey | SecretType::AwsSessionToken => 10,
 
             // High - can access repositories or sensitive APIs
-            SecretType::GitHubToken | SecretType::GitHubAppToken => 9,
+            SecretType::GitHubToken
+            | SecretType::GitHubAppToken
+            | SecretType::GitHubFineGrainedToken => 9,
+            SecretType::AnthropicApiKey
+            | SecretType::OpenAiApiKey
+            | SecretType::GoogleApiKey
+            | SecretType::NpmToken => 8,
             SecretType::SshPrivateKey | SecretType::RsaPrivateKey | SecretType::EcPrivateKey => 9,
             SecretType::DatabaseUrl | SecretType::PostgresUrl | SecretType::MySqlUrl => 9,
 
@@ -383,11 +399,12 @@ impl PatternRegistry {
     }
 
     fn add_github_patterns(&mut self) -> Result<(), regex::Error> {
-        // GitHub Personal Access Token
+        // Personal, OAuth, user-to-server, server-to-server and refresh
+        // tokens: a fixed prefix and 36 base62 characters.
         self.add_pattern(
             SecretPattern::new(
                 "GitHub Personal Access Token",
-                r"(?i)gh[pousr]_[A-Za-z0-9_]{36,255}",
+                r"\bgh[pousr]_[A-Za-z0-9]{36}\b",
                 SecretType::GitHubToken,
                 0.95,
             )?
@@ -398,20 +415,18 @@ impl PatternRegistry {
             ]),
         );
 
-        // Classic GitHub Token
-        self.add_pattern(
-            SecretPattern::new(
-                "GitHub Classic Token",
-                r"(?i)[a-f0-9]{40}",
-                SecretType::GitHubToken,
-                0.7, // Lower confidence, needs context
-            )?
-            .with_context_keywords(vec![
-                "github".to_string(),
-                "token".to_string(),
-                "oauth".to_string(),
-            ]),
-        );
+        // Fine-grained personal access token.
+        self.add_pattern(SecretPattern::new(
+            "GitHub Fine-Grained Token",
+            r"\bgithub_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}\b",
+            SecretType::GitHubFineGrainedToken,
+            0.98,
+        )?);
+
+        // The pre-2021 token format was 40 bare hex characters, which is also
+        // every SHA-1 and git commit id. An unanchored rule for it reported
+        // hundreds of checksums per repository, so there is none: such a
+        // token is still reported when it is assigned to a secret-named key.
 
         Ok(())
     }
@@ -420,18 +435,12 @@ impl PatternRegistry {
         // SSH Private Key
         self.add_pattern(SecretPattern::new(
             "SSH Private Key",
-            r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+            r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s*[A-Za-z0-9+/]{20}",
             SecretType::SshPrivateKey,
             0.98,
         )?);
 
-        // SSH Public Key
-        self.add_pattern(SecretPattern::new(
-            "SSH Public Key",
-            r"ssh-(?:rsa|dss|ed25519|ecdsa) [A-Za-z0-9+/]+=?",
-            SecretType::SshPublicKey,
-            0.8,
-        )?);
+        // No rule for SSH public keys: they are public.
 
         Ok(())
     }
@@ -440,7 +449,7 @@ impl PatternRegistry {
         // PostgreSQL URL
         self.add_pattern(SecretPattern::new(
             "PostgreSQL Connection String",
-            r"postgres(?:ql)?://[^\s]+",
+            r"postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s]+",
             SecretType::PostgresUrl,
             0.9,
         )?);
@@ -448,7 +457,7 @@ impl PatternRegistry {
         // MySQL URL
         self.add_pattern(SecretPattern::new(
             "MySQL Connection String",
-            r"mysql://[^\s]+",
+            r"mysql://[^\s:/@]+:[^\s@/]+@[^\s]+",
             SecretType::MySqlUrl,
             0.9,
         )?);
@@ -456,7 +465,7 @@ impl PatternRegistry {
         // MongoDB URL
         self.add_pattern(SecretPattern::new(
             "MongoDB Connection String",
-            r"mongodb(?:\+srv)?://[^\s]+",
+            r"mongodb(?:\+srv)?://[^\s:/@]+:[^\s@/]+@[^\s]+",
             SecretType::MongoDbUrl,
             0.9,
         )?);
@@ -464,7 +473,7 @@ impl PatternRegistry {
         // Redis URL
         self.add_pattern(SecretPattern::new(
             "Redis Connection String",
-            r"redis://[^\s]+",
+            r"rediss?://[^\s:/@]*:[^\s@/]+@[^\s]+",
             SecretType::RedisUrl,
             0.85,
         )?);
@@ -476,7 +485,7 @@ impl PatternRegistry {
         // Stripe API Key
         self.add_pattern(SecretPattern::new(
             "Stripe API Key",
-            r"(?i)(sk|pk|rk)_(test|live)_[a-zA-Z0-9]{10,99}",
+            r"\b(sk|rk)_(test|live)_[a-zA-Z0-9]{16,99}\b",
             SecretType::StripeApiKey,
             0.95,
         )?);
@@ -497,10 +506,42 @@ impl PatternRegistry {
             0.9,
         )?);
 
+        // Anthropic API key
+        self.add_pattern(SecretPattern::new(
+            "Anthropic API Key",
+            r"\bsk-ant-[A-Za-z0-9]{2,12}-[A-Za-z0-9_\-]{40,}",
+            SecretType::AnthropicApiKey,
+            0.98,
+        )?);
+
+        // OpenAI project, service-account and legacy keys
+        self.add_pattern(SecretPattern::new(
+            "OpenAI API Key",
+            r"\bsk-(proj|svcacct|admin)-[A-Za-z0-9_\-]{40,}|\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}\b",
+            SecretType::OpenAiApiKey,
+            0.95,
+        )?);
+
+        // Google API key
+        self.add_pattern(SecretPattern::new(
+            "Google API Key",
+            r"\bAIza[0-9A-Za-z_\-]{35}\b",
+            SecretType::GoogleApiKey,
+            0.95,
+        )?);
+
+        // npm access token
+        self.add_pattern(SecretPattern::new(
+            "npm Access Token",
+            r"\bnpm_[A-Za-z0-9]{36}\b",
+            SecretType::NpmToken,
+            0.95,
+        )?);
+
         // Slack Token
         self.add_pattern(SecretPattern::new(
             "Slack Token",
-            r"xox[baprs]-[0-9]{12}-[0-9]{12}-[a-zA-Z0-9]{24}",
+            r"\bxox[abeoprs]-[0-9A-Za-z]{8,}(-[0-9A-Za-z]{8,}){1,4}\b",
             SecretType::SlackToken,
             0.95,
         )?);
@@ -520,7 +561,7 @@ impl PatternRegistry {
         // Bearer Token
         self.add_pattern(SecretPattern::new(
             "Bearer Token",
-            r"(?i)bearer\s+[A-Za-z0-9\-\._~\+\/]+=*",
+            r"(?i)\bbearer\s+[A-Za-z0-9\-\._~\+\/]{20,}=*",
             SecretType::BearerToken,
             0.7,
         )?);
@@ -532,7 +573,7 @@ impl PatternRegistry {
         // RSA Private Key
         self.add_pattern(SecretPattern::new(
             "RSA Private Key",
-            r"-----BEGIN RSA PRIVATE KEY-----",
+            r"-----BEGIN RSA PRIVATE KEY-----\s*[A-Za-z0-9+/]{20}",
             SecretType::RsaPrivateKey,
             0.98,
         )?);
@@ -540,7 +581,7 @@ impl PatternRegistry {
         // EC Private Key
         self.add_pattern(SecretPattern::new(
             "EC Private Key",
-            r"-----BEGIN EC PRIVATE KEY-----",
+            r"-----BEGIN EC PRIVATE KEY-----\s*[A-Za-z0-9+/]{20}",
             SecretType::EcPrivateKey,
             0.98,
         )?);
@@ -624,13 +665,67 @@ mod tests {
     #[test]
     fn test_github_token_detection() {
         let registry = PatternRegistry::new().unwrap();
-        let text = "GITHUB_TOKEN=ghp_1234567890abcdef1234567890abcdef12345678";
-        let matches = registry.find_all_matches(text);
+        // Assembled at run time so no token-shaped literal sits in the repo.
+        let body = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
+        let text = format!("GITHUB_TOKEN=ghp_{}", body);
+        let matches = registry.find_all_matches(&text);
 
-        assert!(!matches.is_empty());
         assert!(matches
             .iter()
             .any(|m| matches!(m.secret_type, SecretType::GitHubToken)));
+    }
+
+    fn types_found(text: &str) -> Vec<SecretType> {
+        PatternRegistry::new()
+            .unwrap()
+            .find_all_matches(text)
+            .into_iter()
+            .map(|m| m.secret_type)
+            .collect()
+    }
+
+    #[test]
+    fn test_current_provider_token_formats() {
+        let b62 =
+            "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2W3x4Y5z6A7b8C9d0E1f2G3h4I5j6K7l8M9n0O1p2";
+        let cases: Vec<(String, SecretType)> = vec![
+            (
+                format!("github_pat_{}_{}", &b62[..22], &b62[..59]),
+                SecretType::GitHubFineGrainedToken,
+            ),
+            (format!("gho_{}", &b62[..36]), SecretType::GitHubToken),
+            (
+                format!("sk-ant-api03-{}", &b62[..80]),
+                SecretType::AnthropicApiKey,
+            ),
+            (format!("sk-proj-{}", &b62[..48]), SecretType::OpenAiApiKey),
+            (format!("AIza{}", &b62[..35]), SecretType::GoogleApiKey),
+            (format!("npm_{}", &b62[..36]), SecretType::NpmToken),
+            (
+                format!("xoxb-{}-{}-{}", &b62[..12], &b62[..12], &b62[..24]),
+                SecretType::SlackToken,
+            ),
+            (format!("rk_live_{}", &b62[..24]), SecretType::StripeApiKey),
+        ];
+        for (token, expected) in cases {
+            let found = types_found(&format!("KEY={}", token));
+            assert!(found.contains(&expected), "{:?} not found", expected);
+        }
+    }
+
+    #[test]
+    fn test_hashes_and_headers_are_not_tokens() {
+        // A SHA-1 / commit id is not a GitHub token.
+        let sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709";
+        assert!(!types_found(sha1).contains(&SecretType::GitHubToken));
+        let checksum = format!("checksum = \"{}{}\"", sha1, &sha1[..24]);
+        assert!(types_found(&checksum).is_empty());
+
+        // Mentioning a PEM header or the word "bearer" is not a key.
+        assert!(types_found("looks for -----BEGIN RSA PRIVATE KEY----- headers").is_empty());
+        assert!(types_found("JWT tokens and bearer tokens").is_empty());
+        // Publishable Stripe keys are public by design.
+        assert!(types_found("pk_live_A1b2C3d4E5f6G7h8I9j0K1l2").is_empty());
     }
 
     #[test]

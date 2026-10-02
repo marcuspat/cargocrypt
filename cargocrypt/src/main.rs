@@ -57,6 +57,10 @@ enum Commands {
         /// Exit 0 even when secrets are found
         #[arg(long)]
         no_fail: bool,
+        /// Ignore findings recorded in this earlier JSON report
+        /// (create one with `scan --format json --output <file>`)
+        #[arg(long)]
+        baseline: Option<PathBuf>,
     },
     /// Show configuration
     Config,
@@ -209,8 +213,10 @@ async fn main() -> CryptoResult<()> {
             min_confidence,
             output,
             no_fail,
+            baseline,
         } => {
-            let code = match run_scan(paths, staged, format, min_confidence, output).await {
+            let code = match run_scan(paths, staged, format, min_confidence, output, baseline).await
+            {
                 Ok(true) => 0,
                 Ok(false) if no_fail => 0,
                 Ok(false) => 1,
@@ -256,6 +262,7 @@ async fn run_scan(
     format: ScanFormat,
     min_confidence: f64,
     output: Option<PathBuf>,
+    baseline: Option<PathBuf>,
 ) -> CryptoResult<bool> {
     use cargocrypt::detection::{ReportFormat, ScanOptions, ScanReport, SecretDetector};
 
@@ -316,7 +323,43 @@ async fn run_scan(
         }
     }
 
-    let report = ScanReport::new(&findings, None);
+    // `.cargocryptignore` in the working directory: gitignore syntax, for
+    // fixtures and documentation that hold example credentials on purpose.
+    let ignore_file = std::path::Path::new(".cargocryptignore");
+    if ignore_file.is_file() {
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
+        if let Some(e) = builder.add(ignore_file) {
+            return Err(CargoCryptError::Config {
+                message: format!(".cargocryptignore: {}", e),
+                suggestion: None,
+            });
+        }
+        let matcher = builder.build().map_err(|e| CargoCryptError::Config {
+            message: format!(".cargocryptignore: {}", e),
+            suggestion: None,
+        })?;
+        findings.retain(|f| {
+            let path = f.file_path.strip_prefix("./").unwrap_or(&f.file_path);
+            !matcher.matched_path_or_any_parents(path, false).is_ignore()
+        });
+    }
+
+    let mut report = ScanReport::new(&findings, None);
+    if let Some(path) = baseline {
+        let text = std::fs::read_to_string(&path)?;
+        let known: ScanReport =
+            serde_json::from_str(&text).map_err(|e| CargoCryptError::Config {
+                message: format!("{} is not a scan report: {}", path.display(), e),
+                suggestion: Some(
+                    "Create a baseline with `cargocrypt scan --format json --output <file>`"
+                        .to_string(),
+                ),
+            })?;
+        let suppressed = report.subtract_baseline(&known);
+        if suppressed > 0 {
+            eprintln!("{} finding(s) suppressed by the baseline", suppressed);
+        }
+    }
     let rendered = report.render(match format {
         ScanFormat::Text => ReportFormat::Text,
         ScanFormat::Json => ReportFormat::Json,

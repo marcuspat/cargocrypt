@@ -81,7 +81,7 @@ Ordered by how badly they undercut what the README promises.
       output (temp file, fsync, rename) with 0600 permissions.
 - [x] 5. `cargocrypt scan [paths]`: expose the detector, honour `.gitignore`,
       `--staged`, `--format text|json|sarif`, non-zero exit on findings.
-- [ ] 6. Scan precision. **Measured in loop 5: scanning this repository
+- [x] 6. Scan precision. **Measured in loop 5: scanning this repository
       reports 1,858 findings** — 1,307 `high-entropy-string`, 357
       `github-personal-access-token` (mostly `Cargo.lock` checksums), the rest
       contextual matches on ordinary identifiers. In this state the scanner
@@ -165,3 +165,19 @@ Ordered by how badly they undercut what the README promises.
   `partialFingerprints`. Fixed a panic in `FoundSecret::new`, which sliced at
   byte 47 and could land inside a multi-byte character. 191 tests. Running it
   on this repo exposed the false-positive rate recorded under item 6.
+- Loop 6 (2026-10-01): self-scan went from 1,858 findings to 52, all of them
+  example credentials in the detector's own tests and docs; with the new
+  `.cargocryptignore` the repository scans clean and CI now runs that scan.
+  How: a plausibility gate on the generic detectors (identifiers, CamelCase
+  names, code expressions, plain URLs, hex digests, UUIDs, public keys and
+  sequential placeholders are not secrets); the unanchored 40-hex "GitHub
+  classic" rule is gone; keyword detection requires an actual assignment;
+  connection-string rules require embedded credentials; PEM rules require a
+  key body; lock files are skipped; overlapping detectors report once. New
+  rules: GitHub fine-grained, Anthropic, OpenAI, Google, npm, wider Slack,
+  Stripe restricted. Added `cargocrypt:allow`, `.cargocryptignore` and
+  `--baseline`. `tests/scan_corpus_test.rs` measures a labelled corpus (20
+  secrets, 36 benign lines): recall 1.00, precision 1.00 at confidence 0.5,
+  asserted at >= 0.90. The corpus is synthetic and written alongside the
+  rules, so treat those figures as a regression guard, not a benchmark.
+  204 tests.

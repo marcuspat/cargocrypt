@@ -22,3 +22,7 @@ jobs:
       - run: cargo test
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
+      # The scanner must stay quiet on its own repository.
+      - name: Secret scan (self)
+        working-directory: .
+        run: cargocrypt/target/release/cargocrypt scan .

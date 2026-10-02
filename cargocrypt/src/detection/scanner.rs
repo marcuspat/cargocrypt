@@ -3,6 +3,7 @@
 //! This module provides efficient file scanning capabilities with support for
 //! parallel processing, smart filtering, and various file type handling.
 
+use crate::detection::plausibility;
 use crate::detection::{
     entropy::EntropyAnalyzer, patterns::PatternRegistry, rules::RuleEngine, Finding, FoundSecret,
 };
@@ -14,6 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+
+/// Marker that suppresses findings on the line it appears on.
+pub const INLINE_ALLOW: &str = "cargocrypt:allow";
 
 /// Configuration for file scanning
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -403,6 +407,25 @@ impl FileScanner {
         // 1. Pattern-based detection
         let pattern_matches = self.pattern_registry.find_all_matches(content);
         for pattern_match in pattern_matches {
+            // Format-anchored provider rules stand on their own. The generic
+            // ones (`KEY=value`, `Bearer …`) match ordinary code and prose, so
+            // the value they captured must pass the plausibility check.
+            if matches!(
+                pattern_match.secret_type,
+                crate::detection::SecretType::EnvironmentSecret
+                    | crate::detection::SecretType::BearerToken
+                    | crate::detection::SecretType::HighEntropyString
+            ) {
+                let value = pattern_match
+                    .matched_text
+                    .rsplit(|c: char| c == '=' || c == ':' || c.is_whitespace())
+                    .next()
+                    .unwrap_or("");
+                if !plausibility::is_plausible_secret(value) {
+                    continue;
+                }
+            }
+
             let line_info = self.get_line_info(content, pattern_match.start);
             let context_lines = self.get_context_lines(content, line_info.line_number, 2);
 
@@ -551,6 +574,7 @@ impl FileScanner {
 
         // Remove duplicates and sort by confidence
         self.deduplicate_findings(&mut findings);
+        self.apply_inline_allow(content, &mut findings);
         findings.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
 
         Ok(findings)
@@ -567,6 +591,24 @@ impl FileScanner {
         // Check if it's a regular file
         if !metadata.is_file() {
             return Ok(Some("Not a regular file".to_string()));
+        }
+
+        // Dependency lock files are machine-written lists of checksums.
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            const LOCK_FILES: [&str; 9] = [
+                "Cargo.lock",
+                "package-lock.json",
+                "yarn.lock",
+                "pnpm-lock.yaml",
+                "go.sum",
+                "poetry.lock",
+                "Pipfile.lock",
+                "composer.lock",
+                "Gemfile.lock",
+            ];
+            if LOCK_FILES.contains(&name) {
+                return Ok(Some("Dependency lock file".to_string()));
+            }
         }
 
         // Check extension
@@ -796,10 +838,22 @@ impl FileScanner {
                 continue;
             }
 
+            // Skip pieces of a URL that carries no credentials (badges,
+            // links): percent-encoding and query strings look random.
+            let word_start = content[..start_pos]
+                .rfind(|c: char| c.is_whitespace() || matches!(c, '(' | '"' | '\'' | '<'))
+                .map_or(0, |i| i + 1);
+            let word_end = content[end_pos..]
+                .find(|c: char| c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '>'))
+                .map_or(content.len(), |i| end_pos + i);
+            if plausibility::is_plain_url(&content[word_start..word_end]) {
+                continue;
+            }
+
             let entropy_result = self.entropy_analyzer.analyze(&token);
 
             // Advanced entropy analysis
-            if entropy_result.is_likely_secret {
+            if entropy_result.is_likely_secret && plausibility::is_plausible_secret(&token) {
                 // Additional validation for high-entropy strings
                 if self.validate_entropy_candidate(&token, &entropy_result) {
                     results.push((token, start_pos, entropy_result));
@@ -811,7 +865,7 @@ impl FileScanner {
         let base64_candidates = self.find_base64_candidates(content, found_positions);
         for (candidate, start_pos) in base64_candidates {
             let entropy_result = self.entropy_analyzer.analyze(&candidate);
-            if entropy_result.confidence > 0.6 {
+            if entropy_result.confidence > 0.6 && plausibility::is_plausible_secret(&candidate) {
                 results.push((candidate, start_pos, entropy_result));
             }
         }
@@ -834,13 +888,24 @@ impl FileScanner {
 
         // Keywords that often precede secrets
         let secret_keywords = [
-            ("password", r#"[:\s=]+["']?([^"'\s]{8,})["']?"#),
-            ("api_key", r#"[:\s=]+["']?([A-Za-z0-9_\-]{20,})["']?"#),
-            ("secret", r#"[:\s=]+["']?([A-Za-z0-9_\-]{12,})["']?"#),
-            ("token", r#"[:\s=]+["']?([A-Za-z0-9_\-]{20,})["']?"#),
-            ("auth", r#"[:\s=]+["']?([A-Za-z0-9_\-]{16,})["']?"#),
-            ("credential", r#"[:\s=]+["']?([^"'\s]{10,})["']?"#),
-            ("private_key", r#"[:\s=]+["']?([A-Za-z0-9+/=]{40,})["']?"#),
+            // An assignment (`=` or `:`) is required. Whitespace alone
+            // matched headings such as "Password Management".
+            ("password", r#"["']?\s*[:=]\s*["']?([^"'\s]{8,})["']?"#),
+            (
+                "api_key",
+                r#"["']?\s*[:=]\s*["']?([A-Za-z0-9_\-]{20,})["']?"#,
+            ),
+            (
+                "secret",
+                r#"["']?\s*[:=]\s*["']?([A-Za-z0-9_\-]{12,})["']?"#,
+            ),
+            ("token", r#"["']?\s*[:=]\s*["']?([A-Za-z0-9_\-]{20,})["']?"#),
+            ("auth", r#"["']?\s*[:=]\s*["']?([A-Za-z0-9_\-]{16,})["']?"#),
+            ("credential", r#"["']?\s*[:=]\s*["']?([^"'\s]{10,})["']?"#),
+            (
+                "private_key",
+                r#"["']?\s*[:=]\s*["']?([A-Za-z0-9+/=]{40,})["']?"#,
+            ),
         ];
 
         for (keyword, pattern) in &secret_keywords {
@@ -915,17 +980,55 @@ impl FileScanner {
         "high_entropy_string".to_string()
     }
 
-    /// Remove duplicate findings
+    /// Keep one finding per stretch of text.
+    ///
+    /// The detectors overlap: a provider rule, the keyword detector and the
+    /// entropy detector can each claim the same token, or pieces of it. The
+    /// most specific detector wins and anything overlapping it is dropped.
     fn deduplicate_findings(&self, findings: &mut Vec<Finding>) {
-        let mut seen = std::collections::HashSet::new();
-        findings.retain(|f| {
-            let key = (
-                f.file_path.clone(),
-                f.secret.start_position,
-                f.secret.end_position,
-            );
-            seen.insert(key)
+        fn rank(detector: &str) -> u8 {
+            match detector {
+                "pattern_matcher" => 0,
+                "contextual_analyzer" => 2,
+                "entropy_analyzer" => 3,
+                _ => 1, // custom rules
+            }
+        }
+
+        findings.sort_by(|a, b| {
+            rank(&a.detector_name)
+                .cmp(&rank(&b.detector_name))
+                .then(
+                    b.confidence
+                        .partial_cmp(&a.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+                .then(a.secret.start_position.cmp(&b.secret.start_position))
         });
+
+        let mut kept: Vec<(usize, usize)> = Vec::new();
+        findings.retain(|f| {
+            let (start, end) = (f.secret.start_position, f.secret.end_position);
+            if kept.iter().any(|&(s, e)| start < e && s < end) {
+                return false;
+            }
+            kept.push((start, end));
+            true
+        });
+    }
+
+    /// Drop findings on lines the author has marked `cargocrypt:allow`.
+    fn apply_inline_allow(&self, content: &str, findings: &mut Vec<Finding>) {
+        if !content.contains(INLINE_ALLOW) {
+            return;
+        }
+        let allowed: std::collections::HashSet<usize> = content
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| line.contains(INLINE_ALLOW))
+            .map(|(i, _)| i + 1)
+            .collect();
+        findings.retain(|f| !allowed.contains(&f.secret.line_number));
     }
 
     /// Count character types in a string
@@ -1036,6 +1139,11 @@ impl FileScanner {
 
             let candidate = m.as_str();
 
+            // The tail of a publishable key (`pk_live_…`) is public.
+            if content[..start].ends_with("pk_live_") || content[..start].ends_with("pk_test_") {
+                continue;
+            }
+
             // Validate base64
             if candidate.len() % 4 == 0
                 || (candidate.len() % 4 == 2 && candidate.ends_with("=="))
@@ -1086,6 +1194,12 @@ impl FileScanner {
 
     /// Validate contextual candidate
     fn validate_contextual_candidate(&self, text: &str, keyword: &str) -> bool {
+        // A long hex value assigned to a secret-named key is still worth
+        // reporting; anything else must look like a credential.
+        if !plausibility::is_hex_digest(text) && !plausibility::is_plausible_secret(text) {
+            return false;
+        }
+
         // Must not be a placeholder
         let placeholders = ["your", "my", "insert", "replace", "change", "enter", "here"];
         for placeholder in &placeholders {
@@ -1274,11 +1388,64 @@ mod tests {
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
 
-        // Should classify high-entropy strings
-        let high_entropy_finding = findings.iter().find(|f| {
-            f.secret.secret_type.contains("entropy") || f.secret.secret_type.contains("password")
-        });
-        assert!(high_entropy_finding.is_some());
+        // Several detectors recognise this value (a provider rule, the
+        // keyword detector, the entropy detector). It is reported once, by
+        // the most specific of them.
+        assert_eq!(findings.len(), 1, "{:?}", findings);
+        assert!(
+            content[findings[0].secret.start_position..findings[0].secret.end_position]
+                .contains("wJalrXUtnFEMI")
+        );
+    }
+
+    #[test]
+    fn test_ordinary_code_and_prose_produce_no_findings() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content = r#"
+//! This module provides secure cryptographic operations using ChaCha20-Poly1305
+#### Password Management
+use chacha20poly1305::{aead::Aead, XChaCha20Poly1305};
+const KDF_ARGON2ID_V13: u8 = 1;
+fn render_confirm_dialog(message: &str, frame: &mut Frame) {
+    let password = "test_password";
+    let secret = PlaintextSecret::from_string(data);
+    let encrypted: EncryptedSecret = EncryptedSecret::from_bytes(&serialized)?;
+    let token = std::env::var("GITHUB_TOKEN")?;
+    result.add_error_with_suggestion("icu_properties_data");
+}
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+commit da39a3ee5e6b4b0d3255bfef95601890afd80709
+- JWT tokens and bearer tokens
+"#;
+        let findings = scanner.scan_content(content, Path::new("lib.rs")).unwrap();
+        assert!(
+            findings.is_empty(),
+            "{:#?}",
+            findings
+                .iter()
+                .map(|f| (&f.secret.secret_type, &f.secret.value))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_inline_allow_suppresses_one_line() {
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let content =
+            "AWS_KEY=AKIAIOSFODNN7EXAMPLE # cargocrypt:allow\nOTHER=AKIAI44QH8DHBEXAMPLE\n";
+        let findings = scanner.scan_content(content, Path::new(".env")).unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].secret.line_number, 2);
+    }
+
+    #[test]
+    fn test_lock_files_are_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        std::fs::write(&lock, "password=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n").unwrap();
+        let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        assert!(scanner.scan_file(&lock).unwrap().skipped);
     }
 
     #[test]

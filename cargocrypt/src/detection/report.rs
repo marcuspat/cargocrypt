@@ -121,6 +121,23 @@ impl ScanReport {
         }
     }
 
+    /// Remove findings already recorded in `baseline`.
+    ///
+    /// A baseline is an earlier JSON report. A finding is "known" when the
+    /// same secret (by fingerprint) sits in the same file; its line may move.
+    /// Returns how many findings were suppressed.
+    pub fn subtract_baseline(&mut self, baseline: &ScanReport) -> usize {
+        let known: std::collections::HashSet<(&str, &str)> = baseline
+            .findings
+            .iter()
+            .map(|f| (f.path.as_str(), f.fingerprint.as_str()))
+            .collect();
+        let before = self.findings.len();
+        self.findings
+            .retain(|f| !known.contains(&(f.path.as_str(), f.fingerprint.as_str())));
+        before - self.findings.len()
+    }
+
     /// Whether the scan found anything
     pub fn is_clean(&self) -> bool {
         self.findings.is_empty()
@@ -330,6 +347,22 @@ mod tests {
         assert_eq!(location["artifactLocation"]["uri"], ".env");
         assert_eq!(location["region"]["startLine"], 3);
         assert!(results[0]["partialFingerprints"]["cargocryptSecret/v1"].is_string());
+    }
+
+    #[test]
+    fn baseline_suppresses_known_findings_even_when_they_move() {
+        let baseline = ScanReport::new(&[finding("/repo/.env", 3, 0.95)], Some(Path::new("/repo")));
+        let mut current = ScanReport::new(
+            &[
+                finding("/repo/.env", 12, 0.95),
+                finding("/repo/new.env", 1, 0.95),
+            ],
+            Some(Path::new("/repo")),
+        );
+
+        assert_eq!(current.subtract_baseline(&baseline), 1);
+        assert_eq!(current.findings.len(), 1);
+        assert_eq!(current.findings[0].path, "new.env");
     }
 
     #[test]

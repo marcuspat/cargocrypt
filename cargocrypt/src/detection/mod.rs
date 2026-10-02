@@ -39,6 +39,7 @@ pub mod detector;
 pub mod entropy;
 pub mod findings;
 pub mod patterns;
+pub mod plausibility;
 pub mod report;
 pub mod rules;
 pub mod scanner;
