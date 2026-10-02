@@ -112,9 +112,17 @@ Ordered by how badly they undercut what the README promises.
       `cargo-fuzz` targets for the container parser; fuzz smoke job in CI.
 - [x] 11. `cargocrypt rekey` (change password / upgrade profile and format
       without exposing plaintext on disk) and `cargocrypt verify`.
-- [ ] 12. Team sharing review (`git/team.rs`, 1,500 lines): threat-model it,
-      then move to per-recipient X25519 envelopes so adding or removing a
-      member does not mean re-sharing one password.
+- [x] 12. Team sharing review (`git/team.rs`): per-recipient X25519
+      envelopes replace the shared constant password. Slice shipped; the rest
+      is 12b.
+- [?] 12b. Team sharing, remainder. Needs decisions before it is built:
+      (a) sign member records, key records and audit entries with Ed25519 so
+      repository write access stops being equivalent to team administration
+      (who holds the root of trust, and how is a new admin introduced?);
+      (b) there is no CLI for any team operation: the module is reachable
+      only as a library; (c) `revoke_member_tokens` still writes a
+      revocation list for tokens that no longer exist; (d) removal should
+      drive key rotation and re-encryption of affected files.
 - [ ] 13. Hygiene and honesty: the monitoring dashboard
       (`tui/monitoring.rs`) renders hard-coded sample rows as if they were
       live statistics: wire it to real metrics or label it; `[key_params]` in the config is parsed but
@@ -252,3 +260,18 @@ Ordered by how badly they undercut what the README promises.
   byte-identical. Rekey always writes format v3, so it is also the upgrade
   path for v1 and v2 files; `--profile` changes the KDF cost and
   `--keep-password` changes only that. 229 tests.
+- Loop 12 (2026-10-01): review of `git/team.rs` found the sharing was not
+  real. Every "per-member" wrapped key was encrypted under the constant
+  password `"team_key_password"` and committed, so any clone could read every
+  team key; the "digital signature" was an HMAC keyed with a constant in the
+  source; "access tokens" were encrypted under another constant; the
+  member's `public_key` was never used. Now: `crypto::envelope` seals to an
+  X25519 public key (ephemeral ECDH, HKDF-SHA256, XChaCha20-Poly1305, bound
+  to key id and member id; checked against RFC 7748 and OpenSSL). Team keys
+  are sealed per member, opening one needs that member's secret key, a
+  member with a malformed public key is rejected, and new members get
+  existing keys only through `grant_key` by a holder who supplies their
+  secret. The forgeable signature and the token are removed (fields kept,
+  empty). The module docs now state what is and is not protected: the
+  member list and audit log are still unsigned. `get_shared_key` takes a
+  secret key (API change); new dependency `x25519-dalek`. 239 tests.
