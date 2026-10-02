@@ -74,6 +74,9 @@ cargocrypt config                    # Show current configuration
 # File Operations  
 cargocrypt encrypt <file>            # Encrypt individual files
 cargocrypt decrypt <file>            # Decrypt individual files
+cargocrypt verify <file>             # Check a file is intact, without decrypting to disk
+cargocrypt rekey <file>              # New password / profile in place; upgrades old formats
+cargocrypt scan [paths]              # Find secrets (text, JSON or SARIF; --staged, --baseline)
 
 # Interactive Interfaces
 cargocrypt tui                       # Launch full-featured TUI with file browser

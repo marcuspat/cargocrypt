@@ -110,7 +110,7 @@ Ordered by how badly they undercut what the README promises.
       Dependabot for cargo and actions, pin actions by SHA.
 - [x] 10. Property tests (round trip, tamper detection, truncation) and
       `cargo-fuzz` targets for the container parser; fuzz smoke job in CI.
-- [ ] 11. `cargocrypt rekey` (change password / upgrade profile and format
+- [x] 11. `cargocrypt rekey` (change password / upgrade profile and format
       without exposing plaintext on disk) and `cargocrypt verify`.
 - [ ] 12. Team sharing review (`git/team.rs`, 1,500 lines): threat-model it,
       then move to per-recipient X25519 envelopes so adding or removing a
@@ -242,3 +242,13 @@ Ordered by how badly they undercut what the README promises.
   recompiled eight regexes; they are now compiled once (a 10-byte scan takes
   about 90 microseconds). Large-input throughput is unchanged at roughly
   7-10 MiB/s and is still the scanner's weak spot. 223 tests.
+- Loop 11 (2026-10-01): `cargocrypt verify <file>` decrypts and
+  authenticates a whole container into a sink (nothing written) and reports
+  format version, KDF cost and content size. `cargocrypt rekey <file>`
+  re-encrypts in place: the decryptor and encryptor are joined by an
+  in-memory pipe, so plaintext never reaches the disk, and the result
+  replaces the file atomically only if the old container authenticated to
+  the end. A wrong password or a truncated source leaves the file
+  byte-identical. Rekey always writes format v3, so it is also the upgrade
+  path for v1 and v2 files; `--profile` changes the KDF cost and
+  `--keep-password` changes only that. 229 tests.

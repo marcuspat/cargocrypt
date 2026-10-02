@@ -42,6 +42,41 @@ enum Commands {
         #[arg(long)]
         password_file: Option<PathBuf>,
     },
+    /// Check that an encrypted file is intact and the password opens it
+    ///
+    /// Decrypts and authenticates the whole file without writing anything.
+    Verify {
+        file: PathBuf,
+        /// Read the password from the first line of stdin instead of prompting
+        #[arg(long, conflicts_with = "password_file")]
+        password_stdin: bool,
+        /// Read the password from a file (also: CARGOCRYPT_PASSWORD_FILE)
+        #[arg(long)]
+        password_file: Option<PathBuf>,
+    },
+    /// Re-encrypt a file in place with a new password and/or profile
+    ///
+    /// The plaintext never touches the disk, and the file is replaced only
+    /// once the old contents have authenticated. Older container formats are
+    /// upgraded to the current one.
+    Rekey {
+        file: PathBuf,
+        /// Read the current password from the first line of stdin
+        #[arg(long, conflicts_with = "password_file")]
+        password_stdin: bool,
+        /// Read the current password from a file (also: CARGOCRYPT_PASSWORD_FILE)
+        #[arg(long)]
+        password_file: Option<PathBuf>,
+        /// Read the new password from a file instead of prompting
+        #[arg(long, conflicts_with = "keep_password")]
+        new_password_file: Option<PathBuf>,
+        /// Keep the current password (change only the profile or format)
+        #[arg(long)]
+        keep_password: bool,
+        /// Key derivation profile for the result (default: the configured one)
+        #[arg(long, value_enum)]
+        profile: Option<ProfileArg>,
+    },
     /// Scan files for secrets committed in plain text
     ///
     /// Exits 0 when nothing is found, 1 when secrets are found, 2 on error.
@@ -78,6 +113,37 @@ enum Commands {
     /// Monitoring and performance commands
     #[command(subcommand)]
     Monitor(MonitorCommands),
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ProfileArg {
+    Fast,
+    Balanced,
+    Secure,
+    Paranoid,
+}
+
+impl From<ProfileArg> for cargocrypt::crypto::PerformanceProfile {
+    fn from(profile: ProfileArg) -> Self {
+        use cargocrypt::crypto::PerformanceProfile as P;
+        match profile {
+            ProfileArg::Fast => P::Fast,
+            ProfileArg::Balanced => P::Balanced,
+            ProfileArg::Secure => P::Secure,
+            ProfileArg::Paranoid => P::Paranoid,
+        }
+    }
+}
+
+fn describe(info: &cargocrypt::ContainerInfo) -> String {
+    format!(
+        "format v{}, Argon2id {} MiB / {} passes / {} lanes, {} bytes of content",
+        info.version,
+        info.kdf.m_cost / 1024,
+        info.kdf.t_cost,
+        info.kdf.p_cost,
+        info.plaintext_len
+    )
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -176,6 +242,52 @@ async fn main() -> CryptoResult<()> {
             let password = obtain_password(password_stdin, password_file, false)?;
             let decrypted_file = crypt.decrypt_file(&file, &password).await?;
             println!("✅ File decrypted: {}", decrypted_file.display());
+        }
+        Commands::Verify {
+            file,
+            password_stdin,
+            password_file,
+        } => {
+            let crypt = CargoCrypt::new().await?;
+            let password = obtain_password(password_stdin, password_file, false)?;
+            let info = crypt.verify_file(&file, &password).await?;
+            println!("✅ {} is intact: {}", file.display(), describe(&info));
+        }
+        Commands::Rekey {
+            file,
+            password_stdin,
+            password_file,
+            new_password_file,
+            keep_password,
+            profile,
+        } => {
+            let crypt = CargoCrypt::new().await?;
+            let old = obtain_password(password_stdin, password_file, false)?;
+            let new = if keep_password {
+                old.clone()
+            } else if let Some(path) = new_password_file {
+                cargocrypt::password::read_password_file(path)?
+            } else if password_stdin {
+                // stdin is already consumed by the current password.
+                return Err(CargoCryptError::Config {
+                    message: "With --password-stdin the new password must come from --new-password-file, or use --keep-password".to_string(),
+                    suggestion: None,
+                });
+            } else {
+                let first = zeroize::Zeroizing::new(prompt_password("Enter new password: ")?);
+                let again = zeroize::Zeroizing::new(prompt_password("Confirm new password: ")?);
+                if *first != *again {
+                    return Err(CargoCryptError::Config {
+                        message: "Passwords do not match".to_string(),
+                        suggestion: None,
+                    });
+                }
+                first
+            };
+            let info = crypt
+                .rekey_file(&file, &old, &new, profile.map(Into::into))
+                .await?;
+            println!("✅ {} re-encrypted: {}", file.display(), describe(&info));
         }
         Commands::Scan {
             paths,

@@ -734,34 +734,13 @@ impl CargoCrypt {
         let destination = decrypted_path.clone();
         let password_owned = zeroize::Zeroizing::new(password.to_string());
         tokio::task::spawn_blocking(move || -> CryptoResult<()> {
-            use std::io::{Read, Seek, SeekFrom, Write};
-
-            let mut file = std::fs::File::open(&source)?;
-            let mut prefix = [0u8; 5];
-            let mut seen = 0;
-            while seen < prefix.len() {
-                match file.read(&mut prefix[seen..])? {
-                    0 => break,
-                    n => seen += n,
-                }
-            }
-            file.seek(SeekFrom::Start(0))?;
-
             // Plaintext goes to a private temporary file and is only moved
             // into place once the whole container has authenticated. On any
             // error the temporary is removed when `output` is dropped.
             let mut output = crate::atomic::AtomicFile::create(&destination)?;
-            if crate::crypto::stream::is_stream_container(&prefix[..seen]) {
-                let mut reader = std::io::BufReader::new(file);
+            {
                 let mut writer = std::io::BufWriter::new(output.file());
-                crate::crypto::stream::decrypt_stream(&mut reader, &mut writer, &password_owned)?;
-            } else {
-                // Version 1 and 2 containers are single-shot and held in memory.
-                let mut encrypted_bytes = Vec::new();
-                file.read_to_end(&mut encrypted_bytes)?;
-                let encrypted = crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)?;
-                let decrypted = encrypted.decrypt_with_password(&password_owned)?;
-                output.file().write_all(decrypted.as_bytes())?;
+                decrypt_any(&source, &password_owned, &mut writer)?;
             }
             output.commit()?;
             Ok(())
@@ -774,6 +753,172 @@ impl CargoCrypt {
             decrypted_path.display()
         );
         Ok(decrypted_path)
+    }
+
+    /// Check that an encrypted file is intact and that `password` opens it.
+    ///
+    /// The whole container is decrypted and authenticated; the plaintext is
+    /// discarded and nothing is written to disk.
+    pub async fn verify_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        password: &str,
+    ) -> CryptoResult<ContainerInfo> {
+        let source = path.as_ref().to_path_buf();
+        let password_owned = zeroize::Zeroizing::new(password.to_string());
+        tokio::task::spawn_blocking(move || {
+            decrypt_any(&source, &password_owned, &mut std::io::sink())
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?
+    }
+
+    /// Re-encrypt a file in place under a new password and/or profile.
+    ///
+    /// The plaintext is piped in memory from the decryptor to the encryptor
+    /// and never touches the disk. The result is always a streaming
+    /// (version 3) container, so this also upgrades older formats. The file
+    /// is replaced atomically, and only after the old container has fully
+    /// authenticated: on any failure it is left byte-for-byte as it was.
+    pub async fn rekey_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        old_password: &str,
+        new_password: &str,
+        profile: Option<PerformanceProfile>,
+    ) -> CryptoResult<ContainerInfo> {
+        let password_validation = self.resilience.validate_input("password", new_password);
+        if !password_validation.is_valid {
+            return Err(CargoCryptError::Validation {
+                message: "New password validation failed".to_string(),
+                errors: password_validation
+                    .errors
+                    .iter()
+                    .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
+                    .map(|e| e.message.clone())
+                    .collect(),
+                warnings: password_validation.warnings,
+            });
+        }
+
+        let kdf = profile
+            .unwrap_or_else(|| self.engine.performance_profile())
+            .kdf_params();
+        let target = path.as_ref().to_path_buf();
+        let old = zeroize::Zeroizing::new(old_password.to_string());
+        let new = zeroize::Zeroizing::new(new_password.to_string());
+
+        tokio::task::spawn_blocking(move || -> CryptoResult<ContainerInfo> {
+            use std::io::Write;
+
+            let (pipe_reader, pipe_writer) = std::io::pipe()?;
+            let source = target.clone();
+            let decryptor = std::thread::spawn(move || -> CryptoResult<ContainerInfo> {
+                let mut writer = std::io::BufWriter::new(pipe_writer);
+                let info = decrypt_any(&source, &old, &mut writer)?;
+                writer.flush()?;
+                Ok(info)
+                // `pipe_writer` is dropped here, which ends the encryptor's input.
+            });
+
+            let mut output = crate::atomic::AtomicFile::create(&target)?;
+            let encrypted = {
+                let mut reader = std::io::BufReader::new(pipe_reader);
+                let mut writer = std::io::BufWriter::new(output.file());
+                crate::crypto::stream::encrypt_stream(&mut reader, &mut writer, &new, kdf)
+                // The reader is dropped here; if encryption failed early this
+                // unblocks a decryptor that is still writing.
+            };
+            let decrypted = decryptor
+                .join()
+                .map_err(|_| std::io::Error::other("decryption thread panicked"))?;
+
+            // A failed decryption ends the pipe early, and the encryptor
+            // cannot tell that from a short file: the decryptor's verdict
+            // decides whether the output is kept.
+            let previous = match (decrypted, encrypted) {
+                (Ok(info), Ok(_)) => info,
+                (Ok(_), Err(e)) => return Err(e.into()),
+                (Err(e), _) => return Err(e),
+            };
+            output.commit()?;
+            Ok(ContainerInfo {
+                version: crate::crypto::stream::STREAM_VERSION,
+                kdf,
+                plaintext_len: previous.plaintext_len,
+            })
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?
+    }
+}
+
+/// What a container is and how it was protected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContainerInfo {
+    /// Container format version (1, 2 or 3)
+    pub version: u8,
+    /// Argon2id cost parameters the key was derived with
+    pub kdf: crate::crypto::KdfParams,
+    /// Size of the decrypted contents in bytes
+    pub plaintext_len: u64,
+}
+
+/// Decrypt a container of any supported version into `writer`.
+///
+/// For streaming containers plaintext is written as chunks authenticate, so
+/// the caller must discard what `writer` received if this returns an error.
+fn decrypt_any(
+    source: &Path,
+    password: &str,
+    writer: &mut dyn std::io::Write,
+) -> CryptoResult<ContainerInfo> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(source)?;
+    let mut prefix = [0u8; 19];
+    let mut seen = 0;
+    while seen < prefix.len() {
+        match file.read(&mut prefix[seen..])? {
+            0 => break,
+            n => seen += n,
+        }
+    }
+    file.seek(SeekFrom::Start(0))?;
+
+    if crate::crypto::stream::is_stream_container(&prefix[..seen]) {
+        let field =
+            |i: usize| u32::from_le_bytes([prefix[i], prefix[i + 1], prefix[i + 2], prefix[i + 3]]);
+        let kdf = if seen == prefix.len() {
+            crate::crypto::KdfParams {
+                m_cost: field(7),
+                t_cost: field(11),
+                p_cost: field(15),
+            }
+        } else {
+            crate::crypto::KdfParams::default() // too short; decrypt_stream rejects it
+        };
+        let mut reader = std::io::BufReader::new(file);
+        let mut writer = writer;
+        let plaintext_len =
+            crate::crypto::stream::decrypt_stream(&mut reader, &mut writer, password)?;
+        Ok(ContainerInfo {
+            version: crate::crypto::stream::STREAM_VERSION,
+            kdf,
+            plaintext_len,
+        })
+    } else {
+        // Version 1 and 2 containers are single-shot and held in memory.
+        let mut encrypted_bytes = Vec::new();
+        file.read_to_end(&mut encrypted_bytes)?;
+        let encrypted = crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)?;
+        let decrypted = encrypted.decrypt_with_password(password)?;
+        writer.write_all(decrypted.as_bytes())?;
+        Ok(ContainerInfo {
+            version: encrypted.version(),
+            kdf: encrypted.kdf_params(),
+            plaintext_len: decrypted.len() as u64,
+        })
     }
 }
 
