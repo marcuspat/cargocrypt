@@ -150,7 +150,8 @@ fn is_word_like(segment: &str) -> bool {
                 return false; // starts with digits, then letters
             }
             digits += 1;
-            if digits > 4 {
+            // Up to six: `x25519`, `ed25519`, `rfc7748`, `sha3_512`.
+            if digits > 6 {
                 return false;
             }
         } else {
@@ -243,6 +244,8 @@ mod tests {
             "2026-10-01",
             "HTTPRequestBuilder",
             "KDF_ARGON2ID_V13",
+            "x25519_matches_rfc7748",
+            "ed25519_dalek",
             "test_chacha20poly1305_rfc8439_vector",
             "draft-irtf-cfrg-xchacha-03",
         ] {
