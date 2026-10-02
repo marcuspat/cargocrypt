@@ -20,6 +20,67 @@ Working branch: `claude/sota-loop`. One item per loop, in order.
    `cargo publish`.
 7. Anything that needs Marcus's decision is marked `[?]` and skipped.
 
+## Status at end of round (2026-10-01)
+
+Fifteen loops ran. Fourteen roadmap items shipped; one remainder (12b) is
+parked for decisions. Nothing was merged or published.
+
+**State of the branch** (`claude/sota-loop`, head `6ec9b14` plus this
+commit): 243 tests (147 at the start), unit suite ~6 s (203 s at the start).
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+`cargo test` and the self-scan pass. CI `build-test`, `msrv`,
+`supply-chain` and `fuzz-smoke` are green.
+
+**What the round found.** Most of the work was not adding features but
+discovering that advertised ones did not work:
+
+- git filters encrypted under a public constant, and never round-tripped;
+- the configured filter commands did not exist, and `.gitattributes` never
+  enabled the filter;
+- the pre-commit hook rejected every commit;
+- security profiles had no effect;
+- `.cargocrypt/config.toml` was never read;
+- team keys were wrapped under a constant password and committed;
+- the secret scanner had no command and reported 1,858 findings on its own
+  repository;
+- neither benchmark compiled, and one compared against `thread::sleep`;
+- the monitoring dashboard shows hard-coded numbers.
+
+All but the last are fixed and covered by tests; the dashboard is labelled.
+
+**Red, and why.** GitGuardian fails on two synthetic test fixtures committed
+in loop 6 (`6fc7f51`). They are not credentials and are gone from the tree,
+but the check scans every commit in the PR. Two intermediate commits
+(`17ad48e`, `6c104a4`) were pushed with a failing gate and fixed by the next
+commit; a squash merge hides both.
+
+**Needs a decision from Marcus**
+
+1. GitGuardian: mark the two incidents as test credentials, or squash the
+   branch (a force-push).
+2. Merge strategy for PR #2: it is one large change (72 files); squash is
+   the practical option.
+3. Version: the crate is set to 0.3.0. Publishing is untouched.
+4. Issue #1: close as a false positive (`docs/ISSUE_1_FINDINGS.md`).
+5. Item 12b: who is the root of trust for team membership.
+
+**Not done, in priority order**
+
+1. 12b — sign team member records, key records and the audit log; add a CLI
+   for team operations; drive rotation on member removal.
+2. Deterministic encryption for the git clean filter, so git stops seeing
+   filtered files as modified.
+3. Wire the monitoring dashboard and `monitor` commands to real,
+   persisted metrics, or remove them.
+4. Scanner throughput on large inputs (~10 MiB/s).
+5. Take passwords as a zeroizing type in the library API, not `&str`.
+6. Exercise the terminal UI interactively after the `ratatui` upgrade.
+7. Run the release workflow once on a test tag; add a man page.
+8. Pin GitHub Actions by commit SHA.
+9. Drop `bincode` once version 1 containers no longer need to be read.
+10. An independent benchmark corpus for the scanner, and an external
+    security review.
+
 ## Baseline (2026-10-01, commit 4d33af4)
 
 - 147 tests pass (135 unit, 5 integration, 7 doc); unit tests take ~200 s.
@@ -132,7 +193,7 @@ Ordered by how badly they undercut what the README promises.
 - [x] 14. Release engineering: CHANGELOG through 0.3.0, shell completions and
       man page, release workflow building signed binaries with an SBOM and
       build provenance. No publish.
-- [ ] 15. Wrap-up: all gates, CI green on the PR, final status block here,
+- [x] 15. Wrap-up: all gates, CI green on the PR, final status block here,
       PR description rewritten as a full summary.
 
 ## Log
@@ -309,3 +370,5 @@ Ordered by how badly they undercut what the README promises.
   packaging commands were checked locally, so treat the first tag as a
   test. Not done: a man page; binaries carry provenance attestations, not
   separate signatures. 243 tests.
+- Loop 15 (2026-10-01): wrap-up. All gates and CI re-checked; status block
+  and PR description written. No code changes.
