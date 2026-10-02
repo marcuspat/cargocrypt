@@ -1,6 +1,6 @@
 [package]
 name = "cargocrypt"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.88"
 authors = ["CargoCrypt Team"]
@@ -20,6 +20,7 @@ path = "src/main.rs"
 [dependencies]
 # CLI and UX
 clap = { version = "4.4", features = ["derive", "color", "suggestions"] }
+clap_complete = "4.4"
 rpassword = "7"
 
 # Cryptography (ChaCha20-Poly1305 and Argon2)

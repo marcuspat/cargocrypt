@@ -183,3 +183,26 @@ fn baseline_reports_only_new_secrets() {
         .assert()
         .code(2);
 }
+
+#[test]
+fn completions_are_generated_for_each_shell() {
+    for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+        let out = Command::cargo_bin("cargocrypt")
+            .unwrap()
+            .args(["completions", shell])
+            .assert()
+            .success();
+        let script = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+        assert!(script.contains("cargocrypt"), "{} script is empty", shell);
+        assert!(
+            script.contains("rekey"),
+            "{} script lacks subcommands",
+            shell
+        );
+    }
+    Command::cargo_bin("cargocrypt")
+        .unwrap()
+        .args(["completions", "not-a-shell"])
+        .assert()
+        .failure();
+}

@@ -129,7 +129,7 @@ Ordered by how badly they undercut what the README promises.
       ignored (the profile sets the KDF cost): wire it or remove it; delete `.swarm/`, `test_output.log`,
       `core_backup.rs`; rewrite `SECURITY.md` and the README tables to match
       the code; write up issue #1 with evidence and the rotation checklist.
-- [ ] 14. Release engineering: CHANGELOG through 0.3.0, shell completions and
+- [x] 14. Release engineering: CHANGELOG through 0.3.0, shell completions and
       man page, release workflow building signed binaries with an SBOM and
       build provenance. No publish.
 - [ ] 15. Wrap-up: all gates, CI green on the PR, final status block here,
@@ -297,3 +297,15 @@ Ordered by how badly they undercut what the README promises.
   and across all history. Not done: the dashboard is labelled, not wired to
   real metrics; clean-filter output is still randomised, so git can show
   filtered files as modified. 242 tests.
+- Loop 14 (2026-10-01): crate version set to 0.3.0 (unpublished) and
+  `CHANGELOG.md` written for it, including upgrade notes; 0.2.0-0.2.3 never
+  had entries and that gap is stated rather than invented. Added
+  `cargocrypt completions <shell>`. Added `.github/workflows/release.yml`:
+  on a `v*` tag it checks the tag against `Cargo.toml`, tests, builds Linux,
+  macOS (arm64, x86_64) and Windows binaries, packages them with checksums
+  and completions, attaches GitHub build-provenance attestations, generates
+  a CycloneDX SBOM and opens a *draft* release. It does not publish to
+  crates.io. The workflow has never run: only its YAML syntax and the
+  packaging commands were checked locally, so treat the first tag as a
+  test. Not done: a man page; binaries carry provenance attestations, not
+  separate signatures. 243 tests.

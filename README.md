@@ -19,7 +19,8 @@ for what it does and does not protect before trusting it with anything that
 matters.
 
 > The version published on crates.io (0.2.3) predates most of what is
-> described here. This README describes the repository.
+> described here. This README describes 0.3.0, which is not yet published.
+> See the [changelog](cargocrypt/CHANGELOG.md) before upgrading.
 
 ## Install
 
@@ -64,6 +65,7 @@ cargocrypt git update-ignore         # add CargoCrypt patterns to .gitignore
 # Project
 cargocrypt init [--git]
 cargocrypt config                    # show the effective configuration
+cargocrypt completions <shell>       # bash, zsh, fish, powershell, elvish
 ```
 
 Passwords come from an interactive prompt, `--password-file <path>`, the

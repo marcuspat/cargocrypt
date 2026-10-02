@@ -105,6 +105,14 @@ enum Commands {
     },
     /// Show configuration
     Config,
+    /// Print a shell completion script to stdout
+    ///
+    /// For example: `cargocrypt completions bash > ~/.local/share/bash-completion/completions/cargocrypt`
+    Completions {
+        /// Shell to generate for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
     /// Launch interactive TUI for all CargoCrypt operations
     Tui,
     /// Git-specific commands
@@ -324,6 +332,15 @@ async fn main() -> CryptoResult<()> {
             println!("  Parallelism: {}", kdf.p_cost);
             println!("  Auto-backup: {}", config.file_ops.backup_originals);
             println!("  Fail-secure: {}", config.security.fail_secure);
+        }
+        Commands::Completions { shell } => {
+            use clap::CommandFactory;
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "cargocrypt",
+                &mut std::io::stdout(),
+            );
         }
         Commands::Tui => {
             println!("Starting TUI...");

@@ -284,7 +284,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cargocrypt"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -295,6 +295,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "clap",
+ "clap_complete",
  "criterion",
  "crossterm",
  "flate2",
@@ -457,6 +458,15 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
+]
+
+[[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
