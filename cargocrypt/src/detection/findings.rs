@@ -71,9 +71,12 @@ impl FoundSecret {
         line_number: usize,
         column_number: usize,
     ) -> Self {
-        let is_truncated = value.len() > 50;
+        // Truncate on a character boundary: slicing at a fixed byte offset
+        // panics when it lands inside a multi-byte character.
+        let is_truncated = value.chars().count() > 50;
         let value = if is_truncated {
-            format!("{}...", &value[..47])
+            let head: String = value.chars().take(47).collect();
+            format!("{}...", head)
         } else {
             value
         };
@@ -370,5 +373,14 @@ mod tests {
         assert_eq!(collection.high_confidence_findings(0.7).len(), 1);
         assert_eq!(collection.findings_by_type("api_key").len(), 1);
         assert_eq!(collection.reportable_findings().len(), 2);
+    }
+
+    #[test]
+    fn test_truncation_is_safe_for_multibyte_values() {
+        // 60 two-byte characters: byte offset 47 falls inside a character.
+        let value = "é".repeat(60);
+        let secret = FoundSecret::new(value, "Generic".to_string(), 0, 120, 1, 1);
+        assert!(secret.is_truncated);
+        assert_eq!(secret.value.chars().count(), 50);
     }
 }

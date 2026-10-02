@@ -4,6 +4,10 @@ on:
     branches: [ main ]
   pull_request:
   workflow_dispatch:
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -18,7 +22,56 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: cargocrypt
-      - run: cargo build --release
+      - run: cargo build --release --locked
       - run: cargo test
       - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
+      # Benches, examples and tests are linted too: an unchecked target rots.
+      - run: cargo clippy --all-targets -- -D warnings
+      # The scanner must stay quiet on its own repository.
+      - name: Secret scan (self)
+        working-directory: .
+        run: cargocrypt/target/release/cargocrypt scan .
+
+  # The crate declares rust-version in Cargo.toml; prove it builds there.
+  msrv:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cargocrypt
+      - run: cargo check --locked --all-targets
+
+  # RustSec advisories, licences, duplicate versions and crate sources.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: cargocrypt/Cargo.toml
+          command: check advisories licenses bans sources
+
+  # A short run of each fuzz target: catches shallow crashes on every PR.
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cargocrypt/fuzz
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz run container_parse -- -max_total_time=30 -max_len=4096
+      - run: cargo fuzz run stream_decrypt -- -max_total_time=30 -max_len=4096
+      - run: cargo fuzz run scan_content -- -max_total_time=30 -max_len=4096
+

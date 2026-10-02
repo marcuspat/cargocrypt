@@ -1,0 +1,7 @@
+# Paths that hold example credentials on purpose: the detector's own tests,
+# fixtures and documentation. Gitignore syntax.
+cargocrypt/src/detection/
+cargocrypt/tests/
+cargocrypt/examples/
+cargocrypt/benches/
+cargocrypt/docs/secret_detection.md

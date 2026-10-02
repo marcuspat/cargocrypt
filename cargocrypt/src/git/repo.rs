@@ -212,7 +212,7 @@ impl GitRepo {
         let statuses = self.repo.statuses(None)?;
 
         for entry in statuses.iter() {
-            if entry.path() == Some(relative_path.to_str().unwrap()) {
+            if entry.path().ok() == Some(relative_path.to_str().unwrap()) {
                 return Ok(entry.status().intersects(
                     Status::INDEX_NEW | Status::INDEX_MODIFIED | Status::INDEX_DELETED,
                 ));
@@ -242,7 +242,7 @@ impl GitRepo {
         let statuses = self.repo.statuses(None)?;
 
         for entry in statuses.iter() {
-            if let Some(path) = entry.path() {
+            if let Ok(path) = entry.path() {
                 if entry.status().intersects(
                     Status::WT_MODIFIED
                         | Status::WT_NEW
@@ -364,7 +364,7 @@ impl GitRepo {
     pub fn current_branch(&self) -> GitRepoResult<String> {
         let head = self.repo.head()?;
 
-        if let Some(name) = head.shorthand() {
+        if let Ok(name) = head.shorthand() {
             Ok(name.to_string())
         } else {
             Ok("HEAD".to_string()) // Detached HEAD

@@ -552,14 +552,22 @@ if ! command -v cargocrypt &> /dev/null; then
     exit 1
 fi
 
-# Run secret detection on staged files using CargoCrypt's built-in detection
-if cargocrypt git install-hooks --check-secrets 2>/dev/null; then
-    echo "✅ No secrets detected in staged files"
+# Scan what is about to be committed (the index, not the working tree).
+# `scan` exits 0 when clean, 1 on findings, 2 on error.
+set +e
+cargocrypt scan --staged
+status=$?
+set -e
+
+if [ "$status" -eq 0 ]; then
     exit 0
-else
+elif [ "$status" -eq 1 ]; then
     echo "❌ Secrets detected! Commit blocked."
-    echo "To encrypt sensitive files: 'cargocrypt encrypt <file>'"
-    echo "Or configure .gitattributes for automatic encryption"
+    echo "Encrypt the file ('cargocrypt encrypt <file>'), or mark a false"
+    echo "positive with a 'cargocrypt:allow' comment or .cargocryptignore."
+    exit 1
+else
+    echo "❌ CargoCrypt scan failed (exit $status); commit blocked."
     exit 1
 fi
 "#
@@ -603,10 +611,16 @@ if ! command -v cargocrypt &> /dev/null; then
     exit 1
 fi
 
-# Validate encryption for files marked as encrypted
-# For now, just check if there are any .enc files that might need validation
-echo "✅ Encryption validation passed"
-# TODO: Implement proper validation once validate command is added
+# Tracked *.enc files should be CargoCrypt containers. This checks the magic
+# bytes only: it cannot tell whether a file decrypts (that needs the
+# password; use 'cargocrypt verify'). Files written by 0.2.3 and earlier have
+# no magic and are reported so they can be upgraded with 'cargocrypt rekey'.
+# Advisory: it never blocks a push.
+git ls-files -z -- '*.enc' | while IFS= read -r -d '' file; do
+    if [ -f "$file" ] && [ "$(head -c 4 -- "$file")" != "CCRY" ]; then
+        echo "⚠️  $file is not a current CargoCrypt container"
+    fi
+done
 exit 0
 "#;
 
@@ -660,7 +674,9 @@ mod tests {
 
         let script = hook.generate_script(&config).unwrap();
         assert!(script.contains("CargoCrypt"));
-        assert!(script.contains("secret detection"));
+        assert!(script.contains("cargocrypt scan --staged"));
+        // The flag the hook used to call never existed.
+        assert!(!script.contains("--check-secrets"));
     }
 
     #[test]

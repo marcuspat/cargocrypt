@@ -3,8 +3,7 @@
 //! This example shows how to use CargoCrypt's secret detection capabilities
 //! to scan files and directories for potential secrets, API keys, and tokens.
 
-use cargocrypt::detection::{DetectionConfig, ScanOptions, SecretDetector};
-use std::env;
+use cargocrypt::detection::{ScanOptions, SecretDetector};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,8 +61,6 @@ PORT=3000
     println!("------------------------------------------");
 
     // High confidence only
-    let high_confidence_options = ScanOptions::default().with_min_confidence(0.8);
-
     let high_confidence_findings = detector.scan_content(test_content, "example.env")?;
     let high_conf_count = high_confidence_findings
         .iter()
@@ -74,11 +71,17 @@ PORT=3000
 
     // Configuration files optimized scan
     let config_options = ScanOptions::for_config_files();
-    println!("Config file optimized scan ready");
+    println!(
+        "Config file optimized scan ready (min confidence {})",
+        config_options.detection_config.min_confidence
+    );
 
     // Source code optimized scan
     let source_options = ScanOptions::for_source_code();
-    println!("Source code optimized scan ready");
+    println!(
+        "Source code optimized scan ready (up to {} findings)",
+        source_options.max_findings
+    );
     println!();
 
     // Example 3: Pattern examples
@@ -110,9 +113,7 @@ PORT=3000
     // Example 5: Integration examples
     println!("🔧 Example 5: Integration examples");
     println!("----------------------------------");
-    println!(
-        "{}",
-        r#"
+    const USAGE: &str = r#"
 // Scan a single file
 let findings = detector.scan_file("config.env", &options).await?;
 
@@ -133,8 +134,8 @@ let custom_config = DetectionConfig {
 };
 
 let custom_detector = SecretDetector::with_config(custom_config);
-"#
-    );
+"#;
+    println!("{USAGE}");
 
     println!("🎯 Example 6: Real-world usage patterns");
     println!("---------------------------------------");

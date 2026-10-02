@@ -147,24 +147,6 @@ async fn main() {
         );
     }
 
-    // Memory usage estimation
-    println!("\n💾 Memory Usage Analysis");
-    println!("{}", "-".repeat(60));
-
-    let test_data = vec![0u8; 1024 * 1024]; // 1MB
-    let before_mem = get_memory_usage();
-
-    let _encrypted = engine
-        .encrypt_bytes(&test_data, password, EncryptionOptions::new())
-        .await
-        .unwrap();
-    let after_encrypt = get_memory_usage();
-
-    println!(
-        "Memory overhead for 1MB encryption: ~{:.2} MB",
-        (after_encrypt - before_mem) as f64 / (1024.0 * 1024.0)
-    );
-
     // Summary
     println!("\n📈 Performance Summary");
     println!("{}", "-".repeat(60));
@@ -172,19 +154,4 @@ async fn main() {
     println!("• Direct ChaCha20-Poly1305 shows raw cipher performance");
     println!("• Balanced profile uses 64MB memory, 3 iterations for Argon2");
     println!("• Performance scales linearly with data size");
-
-    // Compare with claims
-    println!("\n📊 Comparison with Documentation");
-    println!("{}", "-".repeat(60));
-    println!("Documentation claims:");
-    println!("• Encryption: 1.2 GB/s (ChaCha20-Poly1305)");
-    println!("• Decryption: 1.4 GB/s (ChaCha20-Poly1305)");
-    println!("• Key generation: 15ms (Ed25519)");
-    println!("\nNote: The documented speeds appear to be for direct cipher operations");
-    println!("without key derivation. Our tests show the full encryption pipeline.");
-}
-
-fn get_memory_usage() -> usize {
-    // Simple memory estimation - in real benchmarks you'd use more sophisticated methods
-    std::mem::size_of::<CryptoEngine>() + 1024 * 1024 // Rough estimate
 }

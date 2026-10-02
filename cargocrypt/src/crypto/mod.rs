@@ -5,12 +5,13 @@
 
 pub mod algorithm;
 pub mod engine;
+pub mod envelope;
 pub mod errors;
 pub mod keys;
-pub mod mock;
 pub mod secrets;
 pub mod security;
 pub mod store;
+pub mod stream;
 
 pub use algorithm::{Algorithm, AlgorithmExt};
 pub use engine::{
@@ -18,7 +19,7 @@ pub use engine::{
     PerformanceProfile,
 };
 pub use errors::{CryptoError, CryptoResult};
-pub use keys::{DerivedKey, KeyDerivationParams, SecureRandom};
+pub use keys::{DerivedKey, KdfParams, KeyDerivationParams, SecureRandom};
 pub use secrets::{EncryptedSecret, PlaintextSecret, SecretMetadata, SecretType};
 pub use security::{
     constant_time_compare, KeyDerivationValidator, SecureBuffer, SecureRandom as SecurityRandom,
@@ -66,7 +67,7 @@ mod tests {
     #[test]
     fn test_module_exports() {
         // Test that all public exports are accessible
-        let _engine = CryptoEngine::new();
-        assert!(true, "Module exports are accessible");
+        let engine = CryptoEngine::new();
+        assert_eq!(engine.performance_profile(), PerformanceProfile::Balanced);
     }
 }

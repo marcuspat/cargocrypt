@@ -26,7 +26,8 @@
 
 // Re-export main types for easy access
 pub use crate::core::{
-    CargoCrypt, CargoCryptBuilder, CryptoConfig, ResilienceConfig, ResilienceManager, SecretBytes,
+    CargoCrypt, CargoCryptBuilder, ContainerInfo, CryptoConfig, ResilienceConfig,
+    ResilienceManager, SecretBytes,
 };
 pub use crate::crypto::{
     CryptoEngine, CryptoError, CryptoResult as CryptoCoreResult, DerivedKey, EncryptedSecret,
@@ -40,10 +41,12 @@ pub use crate::detection::{
 pub use crate::error::{CargoCryptError, CryptoResult, ErrorKind};
 
 // Core modules
+pub mod atomic;
 pub mod core;
 pub mod crypto;
 pub mod error;
 pub mod monitoring;
+pub mod password;
 pub mod resilience;
 pub mod validation;
 

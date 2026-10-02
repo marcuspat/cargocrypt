@@ -62,7 +62,6 @@ async fn test_secret_bytes_zeroization() {
 #[tokio::test]
 async fn test_builder_pattern() {
     let temp_dir = TempDir::new().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
 
     // Create a temporary Cargo.toml
     let cargo_toml = temp_dir.path().join("Cargo.toml");
@@ -77,17 +76,13 @@ edition = "2021"
     )
     .unwrap();
 
-    // Change to temp directory
-    std::env::set_current_dir(temp_dir.path()).unwrap();
-
+    // No chdir here: the process working directory is shared by every test
+    // in this binary, and `project_root` makes it unnecessary.
     // Test builder pattern
     let crypt = cargocrypt::CargoCryptBuilder::new()
         .project_root(temp_dir.path())
         .build()
         .await;
-
-    // Restore original directory
-    std::env::set_current_dir(original_dir).unwrap();
 
     assert!(crypt.is_ok(), "Builder pattern should work");
 }

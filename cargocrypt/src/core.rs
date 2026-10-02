@@ -73,10 +73,13 @@ pub struct CargoCrypt {
 
 /// Configuration for CargoCrypt operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CryptoConfig {
     /// Default performance profile for encryption
     pub performance_profile: PerformanceProfile,
-    /// Key derivation parameters
+    /// Unused. The key derivation cost is set by `performance_profile`;
+    /// these values are parsed for compatibility with existing config files
+    /// and otherwise ignored.
     pub key_params: KeyDerivationConfig,
     /// File operation settings
     pub file_ops: FileOperationConfig,
@@ -92,6 +95,7 @@ pub struct CryptoConfig {
 
 /// Key derivation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct KeyDerivationConfig {
     /// Memory cost in KiB (default: 65536 = 64 MB)
     pub memory_cost: u32,
@@ -105,6 +109,7 @@ pub struct KeyDerivationConfig {
 
 /// File operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FileOperationConfig {
     /// Backup original files before encryption
     pub backup_originals: bool,
@@ -122,6 +127,7 @@ pub struct FileOperationConfig {
 
 /// Security configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SecurityConfig {
     /// Require confirmation for destructive operations
     pub require_confirmation: bool,
@@ -135,6 +141,7 @@ pub struct SecurityConfig {
 
 /// Performance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PerformanceConfig {
     /// Use async operations where possible
     pub async_operations: bool,
@@ -148,6 +155,7 @@ pub struct PerformanceConfig {
 
 /// Resilience and error handling configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ResilienceConfig {
     /// Enable circuit breaker protection
     pub circuit_breaker_enabled: bool,
@@ -407,14 +415,22 @@ impl CargoCryptBuilder {
 
     /// Build the CargoCrypt instance
     pub async fn build(self) -> CryptoResult<CargoCrypt> {
-        let config = self.config.unwrap_or_default();
         let project_root = match self.project_root {
             Some(root) => root,
             None => crate::utils::find_project_root()?,
         };
+        // An explicit configuration wins; otherwise the project's
+        // `.cargocrypt/config.toml` is used when it exists.
+        let config = match self.config {
+            Some(config) => config,
+            None => CryptoConfig::load(&project_root)?,
+        };
+        config.validate()?;
 
         // Initialize crypto engine and secret store
-        let engine = Arc::new(CryptoEngine::new());
+        let engine = Arc::new(CryptoEngine::with_performance_profile(
+            config.performance_profile,
+        ));
         let secret_store = Arc::new(MemorySecretStore::new()) as Arc<dyn SecretStore>;
 
         let monitoring = Arc::new(MonitoringManager::new(config.monitoring.clone()));
@@ -431,6 +447,28 @@ impl CargoCryptBuilder {
             secret_store,
             resilience: ResilienceManager::new(),
             monitoring,
+        })
+    }
+}
+
+impl CryptoConfig {
+    /// Path of the configuration file inside a project.
+    pub fn path_in(project_root: &Path) -> PathBuf {
+        project_root.join(".cargocrypt").join("config.toml")
+    }
+
+    /// Load `<project_root>/.cargocrypt/config.toml`, or the defaults when the
+    /// file does not exist. Keys missing from the file take their defaults.
+    pub fn load(project_root: &Path) -> CryptoResult<Self> {
+        let path = Self::path_in(project_root);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => return Err(e.into()),
+        };
+        toml::from_str(&text).map_err(|e| CargoCryptError::Config {
+            message: format!("{}: {}", path.display(), e),
+            suggestion: Some("Fix the file, or delete it and run `cargocrypt init`".to_string()),
         })
     }
 }
@@ -516,8 +554,6 @@ impl CargoCrypt {
         path: P,
         password: &str,
     ) -> CryptoResult<PathBuf> {
-        use crate::crypto::PlaintextSecret;
-
         let path = path.as_ref().to_path_buf();
         let path_str = path.to_string_lossy().to_string();
 
@@ -564,57 +600,6 @@ impl CargoCrypt {
 
         let config = self.config.read().await;
 
-        // Execute file operations with resilience protection
-        let _path_clone = path.clone();
-        let file_content = {
-            let path_str_clone = path_str.clone();
-            let path_for_read = path.clone();
-            self.resilience
-                .execute_file_operation(move || {
-                    let path_str = path_str_clone.clone();
-                    let path_clone = path_for_read.clone();
-                    async move {
-                        info!("Reading file for encryption: {}", path_str);
-                        let content = tokio::fs::read(&path_clone)
-                            .await
-                            .map_err(CargoCryptError::from)?;
-
-                        // Validate file content
-                        let filename = path_clone
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown");
-                        let validator = InputValidator::new();
-                        let content_validation =
-                            validator.validate_file_content(&content, filename);
-
-                        for warning in &content_validation.warnings {
-                            warn!("File content warning: {}", warning);
-                        }
-
-                        Ok(content)
-                    }
-                })
-                .await?
-        };
-
-        let plaintext = PlaintextSecret::new(file_content);
-
-        // Execute crypto operations with circuit breaker protection
-        let password_str = password.to_string();
-        let _engine_clone = Arc::clone(&self.engine);
-        let encrypted = {
-            info!("Encrypting file content");
-            self.engine
-                .encrypt(
-                    plaintext,
-                    &password_str,
-                    crate::crypto::EncryptionOptions::default(),
-                )
-                .await
-                .map_err(CargoCryptError::from)?
-        };
-
         // Create encrypted file path
         let encrypted_path = path.with_extension(format!(
             "{}.enc",
@@ -623,42 +608,31 @@ impl CargoCrypt {
                 .unwrap_or("dat")
         ));
 
-        // Write encrypted content with resilience protection
-        let encrypted_path_clone = encrypted_path.clone();
-        let atomic_ops = config.file_ops.atomic_operations;
-        {
-            let encrypted_for_write = encrypted.clone();
-            let path_for_write = encrypted_path_clone.clone();
-            self.resilience
-                .execute_file_operation(move || {
-                    let encrypted_bytes_result = encrypted_for_write.clone();
-                    let encrypted_path_clone = path_for_write.clone();
-                    async move {
-                        info!("Writing encrypted file: {}", encrypted_path_clone.display());
-                        let encrypted_bytes = encrypted_bytes_result
-                            .to_bytes()
-                            .map_err(CargoCryptError::from)?;
-
-                        // Atomic operation: write to temp file first, then move
-                        if atomic_ops {
-                            let temp_path = encrypted_path_clone.with_extension("tmp");
-                            tokio::fs::write(&temp_path, &encrypted_bytes)
-                                .await
-                                .map_err(CargoCryptError::from)?;
-                            tokio::fs::rename(&temp_path, &encrypted_path_clone)
-                                .await
-                                .map_err(CargoCryptError::from)?;
-                        } else {
-                            tokio::fs::write(&encrypted_path_clone, encrypted_bytes)
-                                .await
-                                .map_err(CargoCryptError::from)?;
-                        }
-
-                        Ok(())
-                    }
-                })
-                .await?
-        };
+        // Stream the file through the cipher in fixed-size chunks: memory use
+        // does not grow with the file. The output only appears at its final
+        // path once it is complete and synced.
+        info!("Encrypting {} -> {}", path_str, encrypted_path.display());
+        let kdf = self.engine.performance_profile().kdf_params();
+        let source = path.clone();
+        let destination = encrypted_path.clone();
+        let password_owned = zeroize::Zeroizing::new(password.to_string());
+        tokio::task::spawn_blocking(move || -> CryptoResult<()> {
+            let mut reader = std::io::BufReader::new(std::fs::File::open(&source)?);
+            let mut output = crate::atomic::AtomicFile::create(&destination)?;
+            {
+                let mut writer = std::io::BufWriter::new(output.file());
+                crate::crypto::stream::encrypt_stream(
+                    &mut reader,
+                    &mut writer,
+                    &password_owned,
+                    kdf,
+                )?;
+            }
+            output.commit()?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))??;
 
         // Optionally backup original with resilience protection
         if config.file_ops.backup_originals {
@@ -675,9 +649,18 @@ impl CargoCrypt {
                                 .unwrap_or("dat")
                         ));
                         info!("Creating backup: {}", backup_path.display());
-                        tokio::fs::copy(&path_clone, backup_path)
-                            .await
-                            .map_err(CargoCryptError::from)?;
+                        // The backup is plaintext: write it owner-only.
+                        tokio::task::spawn_blocking(move || -> CryptoResult<()> {
+                            let mut source = std::fs::File::open(&path_clone)?;
+                            let mut backup = crate::atomic::AtomicFile::create(&backup_path)?;
+                            std::io::copy(&mut source, backup.file())?;
+                            backup.commit()?;
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| {
+                            CargoCryptError::from(std::io::Error::other(e.to_string()))
+                        })??;
                         Ok(())
                     }
                 })
@@ -741,32 +724,6 @@ impl CargoCrypt {
             warn!("Path validation warning: {}", warning);
         }
 
-        let config = self.config.read().await;
-
-        // Read encrypted content with resilience protection
-        let encrypted_bytes = self
-            .resilience
-            .execute_file_operation(|| async {
-                info!("Reading encrypted file: {}", path_str);
-                tokio::fs::read(path).await.map_err(CargoCryptError::from)
-            })
-            .await?;
-
-        // Parse encrypted data
-        let encrypted = {
-            info!("Parsing encrypted data");
-            crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)
-                .map_err(CargoCryptError::from)?
-        };
-
-        // Decrypt using the crypto engine with circuit breaker protection
-        let decrypted = {
-            info!("Decrypting file content");
-            self.engine
-                .decrypt(&encrypted, password)
-                .map_err(CargoCryptError::from)?
-        };
-
         // Create decrypted file path (remove .enc extension)
         let decrypted_path = if path.extension().and_then(|ext| ext.to_str()) == Some("enc") {
             path.with_extension("")
@@ -774,35 +731,196 @@ impl CargoCrypt {
             path.with_extension("decrypted")
         };
 
-        // Write decrypted content with resilience protection
-        self.resilience
-            .execute_file_operation(|| async {
-                info!("Writing decrypted file: {}", decrypted_path.display());
-
-                // Atomic operation: write to temp file first, then move
-                if config.file_ops.atomic_operations {
-                    let temp_path = decrypted_path.with_extension("tmp");
-                    tokio::fs::write(&temp_path, decrypted.as_bytes())
-                        .await
-                        .map_err(CargoCryptError::from)?;
-                    tokio::fs::rename(&temp_path, &decrypted_path)
-                        .await
-                        .map_err(CargoCryptError::from)?;
-                } else {
-                    tokio::fs::write(&decrypted_path, decrypted.as_bytes())
-                        .await
-                        .map_err(CargoCryptError::from)?;
-                }
-
-                Ok(())
-            })
-            .await?;
+        info!("Decrypting {} -> {}", path_str, decrypted_path.display());
+        let source = path.to_path_buf();
+        let destination = decrypted_path.clone();
+        let password_owned = zeroize::Zeroizing::new(password.to_string());
+        tokio::task::spawn_blocking(move || -> CryptoResult<()> {
+            // Plaintext goes to a private temporary file and is only moved
+            // into place once the whole container has authenticated. On any
+            // error the temporary is removed when `output` is dropped.
+            let mut output = crate::atomic::AtomicFile::create(&destination)?;
+            {
+                let mut writer = std::io::BufWriter::new(output.file());
+                decrypt_any(&source, &password_owned, &mut writer)?;
+            }
+            output.commit()?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))??;
 
         info!(
             "File decryption completed successfully: {}",
             decrypted_path.display()
         );
         Ok(decrypted_path)
+    }
+
+    /// Check that an encrypted file is intact and that `password` opens it.
+    ///
+    /// The whole container is decrypted and authenticated; the plaintext is
+    /// discarded and nothing is written to disk.
+    pub async fn verify_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        password: &str,
+    ) -> CryptoResult<ContainerInfo> {
+        let source = path.as_ref().to_path_buf();
+        let password_owned = zeroize::Zeroizing::new(password.to_string());
+        tokio::task::spawn_blocking(move || {
+            decrypt_any(&source, &password_owned, &mut std::io::sink())
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?
+    }
+
+    /// Re-encrypt a file in place under a new password and/or profile.
+    ///
+    /// The plaintext is piped in memory from the decryptor to the encryptor
+    /// and never touches the disk. The result is always a streaming
+    /// (version 3) container, so this also upgrades older formats. The file
+    /// is replaced atomically, and only after the old container has fully
+    /// authenticated: on any failure it is left byte-for-byte as it was.
+    pub async fn rekey_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        old_password: &str,
+        new_password: &str,
+        profile: Option<PerformanceProfile>,
+    ) -> CryptoResult<ContainerInfo> {
+        let password_validation = self.resilience.validate_input("password", new_password);
+        if !password_validation.is_valid {
+            return Err(CargoCryptError::Validation {
+                message: "New password validation failed".to_string(),
+                errors: password_validation
+                    .errors
+                    .iter()
+                    .filter(|e| e.severity == crate::validation::ValidationSeverity::Critical)
+                    .map(|e| e.message.clone())
+                    .collect(),
+                warnings: password_validation.warnings,
+            });
+        }
+
+        let kdf = profile
+            .unwrap_or_else(|| self.engine.performance_profile())
+            .kdf_params();
+        let target = path.as_ref().to_path_buf();
+        let old = zeroize::Zeroizing::new(old_password.to_string());
+        let new = zeroize::Zeroizing::new(new_password.to_string());
+
+        tokio::task::spawn_blocking(move || -> CryptoResult<ContainerInfo> {
+            use std::io::Write;
+
+            let (pipe_reader, pipe_writer) = std::io::pipe()?;
+            let source = target.clone();
+            let decryptor = std::thread::spawn(move || -> CryptoResult<ContainerInfo> {
+                let mut writer = std::io::BufWriter::new(pipe_writer);
+                let info = decrypt_any(&source, &old, &mut writer)?;
+                writer.flush()?;
+                Ok(info)
+                // `pipe_writer` is dropped here, which ends the encryptor's input.
+            });
+
+            let mut output = crate::atomic::AtomicFile::create(&target)?;
+            let encrypted = {
+                let mut reader = std::io::BufReader::new(pipe_reader);
+                let mut writer = std::io::BufWriter::new(output.file());
+                crate::crypto::stream::encrypt_stream(&mut reader, &mut writer, &new, kdf)
+                // The reader is dropped here; if encryption failed early this
+                // unblocks a decryptor that is still writing.
+            };
+            let decrypted = decryptor
+                .join()
+                .map_err(|_| std::io::Error::other("decryption thread panicked"))?;
+
+            // A failed decryption ends the pipe early, and the encryptor
+            // cannot tell that from a short file: the decryptor's verdict
+            // decides whether the output is kept.
+            let previous = match (decrypted, encrypted) {
+                (Ok(info), Ok(_)) => info,
+                (Ok(_), Err(e)) => return Err(e.into()),
+                (Err(e), _) => return Err(e),
+            };
+            output.commit()?;
+            Ok(ContainerInfo {
+                version: crate::crypto::stream::STREAM_VERSION,
+                kdf,
+                plaintext_len: previous.plaintext_len,
+            })
+        })
+        .await
+        .map_err(|e| CargoCryptError::from(std::io::Error::other(e.to_string())))?
+    }
+}
+
+/// What a container is and how it was protected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContainerInfo {
+    /// Container format version (1, 2 or 3)
+    pub version: u8,
+    /// Argon2id cost parameters the key was derived with
+    pub kdf: crate::crypto::KdfParams,
+    /// Size of the decrypted contents in bytes
+    pub plaintext_len: u64,
+}
+
+/// Decrypt a container of any supported version into `writer`.
+///
+/// For streaming containers plaintext is written as chunks authenticate, so
+/// the caller must discard what `writer` received if this returns an error.
+fn decrypt_any(
+    source: &Path,
+    password: &str,
+    writer: &mut dyn std::io::Write,
+) -> CryptoResult<ContainerInfo> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(source)?;
+    let mut prefix = [0u8; 19];
+    let mut seen = 0;
+    while seen < prefix.len() {
+        match file.read(&mut prefix[seen..])? {
+            0 => break,
+            n => seen += n,
+        }
+    }
+    file.seek(SeekFrom::Start(0))?;
+
+    if crate::crypto::stream::is_stream_container(&prefix[..seen]) {
+        let field =
+            |i: usize| u32::from_le_bytes([prefix[i], prefix[i + 1], prefix[i + 2], prefix[i + 3]]);
+        let kdf = if seen == prefix.len() {
+            crate::crypto::KdfParams {
+                m_cost: field(7),
+                t_cost: field(11),
+                p_cost: field(15),
+            }
+        } else {
+            crate::crypto::KdfParams::default() // too short; decrypt_stream rejects it
+        };
+        let mut reader = std::io::BufReader::new(file);
+        let mut writer = writer;
+        let plaintext_len =
+            crate::crypto::stream::decrypt_stream(&mut reader, &mut writer, password)?;
+        Ok(ContainerInfo {
+            version: crate::crypto::stream::STREAM_VERSION,
+            kdf,
+            plaintext_len,
+        })
+    } else {
+        // Version 1 and 2 containers are single-shot and held in memory.
+        let mut encrypted_bytes = Vec::new();
+        file.read_to_end(&mut encrypted_bytes)?;
+        let encrypted = crate::crypto::EncryptedSecret::from_bytes(&encrypted_bytes)?;
+        let decrypted = encrypted.decrypt_with_password(password)?;
+        writer.write_all(decrypted.as_bytes())?;
+        Ok(ContainerInfo {
+            version: encrypted.version(),
+            kdf: encrypted.kdf_params(),
+            plaintext_len: decrypted.len() as u64,
+        })
     }
 }
 
@@ -852,7 +970,9 @@ impl Default for KeyDerivationConfig {
 impl Default for FileOperationConfig {
     fn default() -> Self {
         Self {
-            backup_originals: true,
+            // Off by default: a backup is a second plaintext copy of the
+            // very file being protected.
+            backup_originals: false,
             encrypted_extension: "enc".to_string(),
             buffer_size: 64 * 1024, // 64 KB
             compression: false,

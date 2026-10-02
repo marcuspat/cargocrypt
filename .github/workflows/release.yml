@@ -1,0 +1,110 @@
+# Builds release binaries when a version tag is pushed, and attaches them to
+# a draft GitHub release. It does not publish to crates.io: that stays a
+# deliberate manual step.
+#
+# This workflow has not run yet. Review the first draft release it produces
+# before publishing it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write       # build provenance
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: macos-latest, target: aarch64-apple-darwin, ext: "" }
+          - { os: macos-latest, target: x86_64-apple-darwin, ext: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
+    defaults:
+      run:
+        working-directory: cargocrypt
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # The tag must match the crate version, or the binary would misreport it.
+      - name: Check tag matches Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != crate version v$version"; exit 1; }
+
+      - run: cargo test --locked
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          name="cargocrypt-$GITHUB_REF_NAME-${{ matrix.target }}"
+          mkdir -p "dist/$name/completions"
+          bin="target/${{ matrix.target }}/release/cargocrypt${{ matrix.ext }}"
+          cp "$bin" ../LICENSE-MIT ../LICENSE-APACHE README.md CHANGELOG.md SECURITY.md "dist/$name/"
+          # Completions come from the binary just built; skipped when it
+          # cannot run on the build machine.
+          for shell in bash zsh fish; do
+            "$bin" completions "$shell" > "dist/$name/completions/cargocrypt.$shell" || true
+          done
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && (sha256sum "$name.tar.gz" 2>/dev/null || shasum -a 256 "$name.tar.gz") > "$name.tar.gz.sha256")
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: cargocrypt/dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            cargocrypt/dist/*.tar.gz
+            cargocrypt/dist/*.sha256
+
+  sbom:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cargocrypt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-cyclonedx --locked
+      - run: cargo cyclonedx --format json --override-filename cargocrypt.cdx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: cargocrypt/cargocrypt.cdx.json
+
+  release:
+    needs: [build, sbom]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      # Draft: a person reads it and presses publish.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See CHANGELOG.md for what changed in this release."

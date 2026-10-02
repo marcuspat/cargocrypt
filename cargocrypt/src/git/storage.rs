@@ -368,14 +368,14 @@ impl EncryptedStorage {
 
     /// Serialize encrypted secret to bytes
     fn serialize_encrypted_secret(&self, encrypted_secret: &EncryptedSecret) -> GitResult<Vec<u8>> {
-        bincode::serialize(encrypted_secret).map_err(|e| {
+        encrypted_secret.to_bytes().map_err(|e| {
             GitError::StorageFailed(format!("Failed to serialize encrypted secret: {}", e))
         })
     }
 
     /// Deserialize encrypted secret from bytes
     fn deserialize_encrypted_secret(&self, data: &[u8]) -> GitResult<EncryptedSecret> {
-        bincode::deserialize(data).map_err(|e| {
+        EncryptedSecret::from_bytes(data).map_err(|e| {
             GitError::StorageFailed(format!("Failed to deserialize encrypted secret: {}", e))
         })
     }
@@ -587,7 +587,7 @@ impl GitObjectStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::{PlaintextSecret, SecretType};
+    use crate::crypto::PlaintextSecret;
     use crate::EncryptionOptions;
     use tempfile::TempDir;
 

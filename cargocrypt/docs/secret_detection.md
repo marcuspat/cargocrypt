@@ -1,5 +1,12 @@
 # CargoCrypt Secret Detection System
 
+> **Historical design notes.** This document predates the current
+> implementation and describes intentions as well as features. Where it
+> disagrees with the README or `SECURITY.md`, those are correct. In
+> particular there is no machine-learned detection, no AES-GCM mode, and the
+> output examples below are illustrative rather than captured.
+
+
 ## Overview
 
 CargoCrypt includes a state-of-the-art secret detection system that uses machine learning-trained patterns, entropy analysis, and custom rules to identify secrets, API keys, tokens, and other sensitive information in your codebase.

@@ -83,6 +83,10 @@ impl MonitoringManager {
         if let Err(e) = tracing_subscriber::registry()
             .with(
                 tracing_subscriber::fmt::layer()
+                    // Diagnostics go to stderr. stdout is data: the git
+                    // clean/smudge filters and `monitor export` write their
+                    // payload there, and a log line mixed into it corrupts it.
+                    .with_writer(std::io::stderr)
                     .with_target(false)
                     .with_thread_ids(true)
                     .with_file(true)
