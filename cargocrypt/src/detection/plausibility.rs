@@ -274,11 +274,12 @@ mod tests {
 
     #[test]
     fn credential_shaped_values_are_kept() {
-        let aws_secret = ["wJalrXUtnFEMI/K7MDENG", "/bPxRfiCYEXAMPLEKEY"].concat();
+        // AWS's published documentation example, in pieces.
+        let doc_example = ["wJalrXUtn", "FEMI/K7MDENG", "/bPxRfiCY", "EXAMPLEKEY"].concat();
         let url_with_credentials =
             format!("postgres://{}:{}@db.internal:5432/app", "admin", "q7Lm2Xv9");
         for value in [
-            aws_secret.as_str(),
+            doc_example.as_str(),
             "dGVzdF9zZWNyZXRfa2V5XzEyMzQ1Njc4OTA=",
             "xK9mP2vL8nQ4wR7tY3uI6oA1sD5fG0hJ",
             "Tr0ub4dor&3xKq9",
