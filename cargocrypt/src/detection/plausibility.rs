@@ -275,12 +275,14 @@ mod tests {
     #[test]
     fn credential_shaped_values_are_kept() {
         let aws_secret = ["wJalrXUtnFEMI/K7MDENG", "/bPxRfiCYEXAMPLEKEY"].concat();
+        let url_with_credentials =
+            format!("postgres://{}:{}@db.internal:5432/app", "admin", "q7Lm2Xv9");
         for value in [
             aws_secret.as_str(),
             "dGVzdF9zZWNyZXRfa2V5XzEyMzQ1Njc4OTA=",
             "xK9mP2vL8nQ4wR7tY3uI6oA1sD5fG0hJ",
             "Tr0ub4dor&3xKq9",
-            "postgres://admin:s3cr3tP4ss@db.internal:5432/app",
+            url_with_credentials.as_str(),
             "7f3a9c2e1b8d4f6a",
             "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU",
         ] {

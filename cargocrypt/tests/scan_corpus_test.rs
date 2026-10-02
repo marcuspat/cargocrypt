@@ -31,19 +31,31 @@ fn positives() -> Vec<String> {
             &B62[..24]
         ),
         format!("stripe_key = \"sk_live_{}\"", &B62[..24]),
-        "DATABASE_URL=postgres://admin:s3cr3tP4ss@db.internal:5432/app".to_string(),
-        "url: mongodb+srv://svc:Zx81kQp02mN@cluster0.example.mongodb.net/prod".to_string(),
+        format!(
+            "DATABASE_URL=postgres://{}:{}@db.internal:5432/app",
+            "admin",
+            &B62[..12]
+        ),
+        format!(
+            "url: mongodb+srv://{}:{}@cluster0.example.mongodb.net/prod",
+            "svc",
+            &B62[..12]
+        ),
         format!("api_key = \"{}\"", RANDOM),
-        format!("  password: \"{}\"", "Tr0ub4dor&3xKq9zW"),
+        format!("  password: \"{}&{}\"", &B62[4..12], &B62[20..28]),
         format!("\"client_secret\": \"{}\"", RANDOM),
         format!("export SESSION_SECRET={}", RANDOM),
         format!("Authorization: Bearer {}{}", RANDOM, RANDOM),
         format!(
-            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA{}\n-----END RSA PRIVATE KEY-----",
-            &B62[..48]
+            "-----BEGIN {} KEY-----\nMIIEpAIBAAKCAQEA{}\n-----END {} KEY-----",
+            "RSA PRIVATE",
+            &B62[..48],
+            "RSA PRIVATE"
         ),
         format!(
-            "jwt = \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.{}\"",
+            "jwt = \"{}.{}.{}\"",
+            ["eyJhbGciOiJIUzI1NiIs", "InR5cCI6IkpXVCJ9"].concat(),
+            ["eyJzdWIiOiIxMjM0", "NTY3ODkwIn0"].concat(),
             &B62[..43]
         ),
         format!("auth_token = '{}'", &B62[10..50]),

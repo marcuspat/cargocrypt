@@ -45,6 +45,7 @@ pub mod core;
 pub mod crypto;
 pub mod error;
 pub mod monitoring;
+pub mod password;
 pub mod resilience;
 pub mod validation;
 

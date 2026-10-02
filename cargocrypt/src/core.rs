@@ -73,6 +73,7 @@ pub struct CargoCrypt {
 
 /// Configuration for CargoCrypt operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CryptoConfig {
     /// Default performance profile for encryption
     pub performance_profile: PerformanceProfile,
@@ -92,6 +93,7 @@ pub struct CryptoConfig {
 
 /// Key derivation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct KeyDerivationConfig {
     /// Memory cost in KiB (default: 65536 = 64 MB)
     pub memory_cost: u32,
@@ -105,6 +107,7 @@ pub struct KeyDerivationConfig {
 
 /// File operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FileOperationConfig {
     /// Backup original files before encryption
     pub backup_originals: bool,
@@ -122,6 +125,7 @@ pub struct FileOperationConfig {
 
 /// Security configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SecurityConfig {
     /// Require confirmation for destructive operations
     pub require_confirmation: bool,
@@ -135,6 +139,7 @@ pub struct SecurityConfig {
 
 /// Performance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PerformanceConfig {
     /// Use async operations where possible
     pub async_operations: bool,
@@ -148,6 +153,7 @@ pub struct PerformanceConfig {
 
 /// Resilience and error handling configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ResilienceConfig {
     /// Enable circuit breaker protection
     pub circuit_breaker_enabled: bool,
@@ -407,11 +413,17 @@ impl CargoCryptBuilder {
 
     /// Build the CargoCrypt instance
     pub async fn build(self) -> CryptoResult<CargoCrypt> {
-        let config = self.config.unwrap_or_default();
         let project_root = match self.project_root {
             Some(root) => root,
             None => crate::utils::find_project_root()?,
         };
+        // An explicit configuration wins; otherwise the project's
+        // `.cargocrypt/config.toml` is used when it exists.
+        let config = match self.config {
+            Some(config) => config,
+            None => CryptoConfig::load(&project_root)?,
+        };
+        config.validate()?;
 
         // Initialize crypto engine and secret store
         let engine = Arc::new(CryptoEngine::with_performance_profile(
@@ -433,6 +445,28 @@ impl CargoCryptBuilder {
             secret_store,
             resilience: ResilienceManager::new(),
             monitoring,
+        })
+    }
+}
+
+impl CryptoConfig {
+    /// Path of the configuration file inside a project.
+    pub fn path_in(project_root: &Path) -> PathBuf {
+        project_root.join(".cargocrypt").join("config.toml")
+    }
+
+    /// Load `<project_root>/.cargocrypt/config.toml`, or the defaults when the
+    /// file does not exist. Keys missing from the file take their defaults.
+    pub fn load(project_root: &Path) -> CryptoResult<Self> {
+        let path = Self::path_in(project_root);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => return Err(e.into()),
+        };
+        toml::from_str(&text).map_err(|e| CargoCryptError::Config {
+            message: format!("{}: {}", path.display(), e),
+            suggestion: Some("Fix the file, or delete it and run `cargocrypt init`".to_string()),
         })
     }
 }
@@ -613,9 +647,18 @@ impl CargoCrypt {
                                 .unwrap_or("dat")
                         ));
                         info!("Creating backup: {}", backup_path.display());
-                        tokio::fs::copy(&path_clone, backup_path)
-                            .await
-                            .map_err(CargoCryptError::from)?;
+                        // The backup is plaintext: write it owner-only.
+                        tokio::task::spawn_blocking(move || -> CryptoResult<()> {
+                            let mut source = std::fs::File::open(&path_clone)?;
+                            let mut backup = crate::atomic::AtomicFile::create(&backup_path)?;
+                            std::io::copy(&mut source, backup.file())?;
+                            backup.commit()?;
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| {
+                            CargoCryptError::from(std::io::Error::other(e.to_string()))
+                        })??;
                         Ok(())
                     }
                 })
@@ -780,7 +823,9 @@ impl Default for KeyDerivationConfig {
 impl Default for FileOperationConfig {
     fn default() -> Self {
         Self {
-            backup_originals: true,
+            // Off by default: a backup is a second plaintext copy of the
+            // very file being protected.
+            backup_originals: false,
             encrypted_extension: "enc".to_string(),
             buffer_size: 64 * 1024, // 64 KB
             compression: false,

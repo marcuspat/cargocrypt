@@ -93,7 +93,7 @@ Ordered by how badly they undercut what the README promises.
       `github_pat_`, `sk-ant-`, `sk-proj-`, Slack `xox*`, Stripe restricted
       keys); a labelled fixture corpus with measured precision/recall replacing
       the "not independently benchmarked" caveat.
-- [ ] 7. Password handling: `Zeroizing<String>` through CLI and engine,
+- [x] 7. Password handling: `Zeroizing<String>` through CLI and engine,
       `--password-file` / `CARGOCRYPT_PASSWORD_FILE`, stop trimming passwords,
       drop the `git config cargocrypt.password` source (warn if present).
       Also found in loop 4, same area: `.cargocrypt/config.toml` is written by
@@ -115,7 +115,8 @@ Ordered by how badly they undercut what the README promises.
 - [ ] 12. Team sharing review (`git/team.rs`, 1,500 lines): threat-model it,
       then move to per-recipient X25519 envelopes so adding or removing a
       member does not mean re-sharing one password.
-- [ ] 13. Hygiene and honesty: delete `.swarm/`, `test_output.log`,
+- [ ] 13. Hygiene and honesty: `[key_params]` in the config is parsed but
+      ignored (the profile sets the KDF cost): wire it or remove it; delete `.swarm/`, `test_output.log`,
       `core_backup.rs`; rewrite `SECURITY.md` and the README tables to match
       the code; write up issue #1 with evidence and the rotation checklist.
 - [ ] 14. Release engineering: CHANGELOG through 0.3.0, shell completions and
@@ -181,3 +182,14 @@ Ordered by how badly they undercut what the README promises.
   asserted at >= 0.90. The corpus is synthetic and written alongside the
   rules, so treat those figures as a regression guard, not a benchmark.
   204 tests.
+- Loop 7 (2026-10-01): passwords are no longer trimmed (only one trailing
+  line ending is removed), travel as `Zeroizing<String>` in the CLI, and can
+  come from `--password-file` or `CARGOCRYPT_PASSWORD_FILE`. The git filter
+  no longer reads `git config cargocrypt.password` and says so if it is set.
+  `.cargocrypt/config.toml` is now loaded (missing keys default, a bad file
+  is an error). `backup_originals` defaults to false; when enabled the copy
+  is written 0600. 216 tests. GitGuardian failed on the loop 6 commit —
+  almost certainly the credential-shaped literals in the new corpus test;
+  those are now assembled at run time. Not done here: the engine API still
+  takes `&str` passwords, and `[key_params]` in the config is still ignored
+  (the profile decides the KDF cost) — both noted under item 13.

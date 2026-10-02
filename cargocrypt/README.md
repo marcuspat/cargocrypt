@@ -151,7 +151,7 @@ parallelism = 4        # Thread count
 output_length = 32     # Key length in bytes
 
 [file_ops]
-backup_originals = true  # Create .backup files during encryption
+backup_originals = false  # Opt in to a plaintext `.backup` copy (written 0600)
 
 [security]
 timing_attack_protection = true  # Constant-time operations

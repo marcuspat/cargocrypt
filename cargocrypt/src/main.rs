@@ -25,16 +25,22 @@ enum Commands {
     /// Encrypt a file
     Encrypt {
         file: PathBuf,
-        /// Read password from stdin instead of prompting
-        #[arg(long)]
+        /// Read the password from the first line of stdin instead of prompting
+        #[arg(long, conflicts_with = "password_file")]
         password_stdin: bool,
+        /// Read the password from a file (also: CARGOCRYPT_PASSWORD_FILE)
+        #[arg(long)]
+        password_file: Option<PathBuf>,
     },
     /// Decrypt a file
     Decrypt {
         file: PathBuf,
-        /// Read password from stdin instead of prompting
-        #[arg(long)]
+        /// Read the password from the first line of stdin instead of prompting
+        #[arg(long, conflicts_with = "password_file")]
         password_stdin: bool,
+        /// Read the password from a file (also: CARGOCRYPT_PASSWORD_FILE)
+        #[arg(long)]
+        password_file: Option<PathBuf>,
     },
     /// Scan files for secrets committed in plain text
     ///
@@ -154,55 +160,20 @@ async fn main() -> CryptoResult<()> {
         Commands::Encrypt {
             file,
             password_stdin,
+            password_file,
         } => {
             let crypt = CargoCrypt::new().await?;
-
-            let password = if password_stdin {
-                // Read password from stdin
-                use std::io::{self, BufRead};
-                let stdin = io::stdin();
-                let mut handle = stdin.lock();
-                let mut password = String::new();
-                handle
-                    .read_line(&mut password)
-                    .map_err(CargoCryptError::from)?;
-                password.trim().to_string()
-            } else {
-                // Prompt for password with confirmation
-                let password = prompt_password("Enter password for encryption: ")?;
-                let password_confirm = prompt_password("Confirm password: ")?;
-
-                if password != password_confirm {
-                    eprintln!("❌ Error: Passwords do not match");
-                    std::process::exit(1);
-                }
-                password
-            };
-
+            let password = obtain_password(password_stdin, password_file, true)?;
             let encrypted_file = crypt.encrypt_file(&file, &password).await?;
             println!("✅ File encrypted: {}", encrypted_file.display());
         }
         Commands::Decrypt {
             file,
             password_stdin,
+            password_file,
         } => {
             let crypt = CargoCrypt::new().await?;
-
-            let password = if password_stdin {
-                // Read password from stdin
-                use std::io::{self, BufRead};
-                let stdin = io::stdin();
-                let mut handle = stdin.lock();
-                let mut password = String::new();
-                handle
-                    .read_line(&mut password)
-                    .map_err(CargoCryptError::from)?;
-                password.trim().to_string()
-            } else {
-                // Prompt for password
-                prompt_password("Enter password for decryption: ")?
-            };
-
+            let password = obtain_password(password_stdin, password_file, false)?;
             let decrypted_file = crypt.decrypt_file(&file, &password).await?;
             println!("✅ File decrypted: {}", decrypted_file.display());
         }
@@ -394,31 +365,73 @@ fn staged_files() -> CryptoResult<Vec<String>> {
         .collect())
 }
 
-/// Resolve the password used by the git clean/smudge filters.
+/// Get the password for encrypt/decrypt.
 ///
-/// Order: `CARGOCRYPT_PASSWORD`, then `git config cargocrypt.password`.
-/// There is deliberately no fallback: a filter that cannot find a password must
-/// fail, otherwise files are "encrypted" under a publicly known constant.
-fn git_filter_password() -> CryptoResult<String> {
-    if let Ok(password) = std::env::var("CARGOCRYPT_PASSWORD") {
-        if !password.is_empty() {
-            return Ok(password);
-        }
+/// Order: `--password-stdin`, `--password-file`, `CARGOCRYPT_PASSWORD_FILE`,
+/// then an interactive prompt (with confirmation when encrypting).
+fn obtain_password(
+    from_stdin: bool,
+    file: Option<PathBuf>,
+    confirm: bool,
+) -> CryptoResult<zeroize::Zeroizing<String>> {
+    use cargocrypt::password;
+    use zeroize::Zeroizing;
+
+    if from_stdin {
+        return password::read_password_line(std::io::stdin().lock());
+    }
+    if let Some(path) = file {
+        return password::read_password_file(path);
+    }
+    if let Some(path) = std::env::var_os(password::PASSWORD_FILE_ENV).filter(|p| !p.is_empty()) {
+        return password::read_password_file(path);
     }
 
-    let from_git_config = std::process::Command::new("git")
+    let entered = Zeroizing::new(prompt_password(if confirm {
+        "Enter password for encryption: "
+    } else {
+        "Enter password for decryption: "
+    })?);
+    if confirm {
+        let again = Zeroizing::new(prompt_password("Confirm password: ")?);
+        if *entered != *again {
+            return Err(CargoCryptError::Config {
+                message: "Passwords do not match".to_string(),
+                suggestion: None,
+            });
+        }
+    }
+    Ok(entered)
+}
+
+/// Resolve the password used by the git clean/smudge filters.
+///
+/// Order: `CARGOCRYPT_PASSWORD_FILE`, then `CARGOCRYPT_PASSWORD`. There is
+/// deliberately no fallback: a filter that cannot find a password must fail,
+/// otherwise files are "encrypted" under a publicly known constant.
+///
+/// `git config cargocrypt.password` is no longer read. It kept the password
+/// in clear text in `.git/config`; if it is still set, say so rather than
+/// failing with a bare "no password".
+fn git_filter_password() -> CryptoResult<zeroize::Zeroizing<String>> {
+    if let Some(password) = cargocrypt::password::from_environment()? {
+        return Ok(password);
+    }
+
+    let legacy = std::process::Command::new("git")
         .args(["config", "--get", "cargocrypt.password"])
         .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|s| s.trim_end_matches(['\r', '\n']).to_string())
-        .filter(|s| !s.is_empty());
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false);
 
-    from_git_config.ok_or_else(|| CargoCryptError::Config {
-        message: "No password available for the CargoCrypt git filter".to_string(),
+    Err(CargoCryptError::Config {
+        message: if legacy {
+            "`git config cargocrypt.password` is set but no longer read: it stores the password in clear text in .git/config".to_string()
+        } else {
+            "No password available for the CargoCrypt git filter".to_string()
+        },
         suggestion: Some(
-            "Set the CARGOCRYPT_PASSWORD environment variable before running git".to_string(),
+            "Set CARGOCRYPT_PASSWORD_FILE to a file containing the password (mode 600), or CARGOCRYPT_PASSWORD".to_string(),
         ),
     })
 }
