@@ -59,7 +59,7 @@ cargocrypt monitor dashboard
 ## 🔥 Complete Feature Set
 
 ### Core Operations
-- **File encryption/decryption** with ChaCha20-Poly1305 (1.0+ GB/s)
+- **File encryption/decryption** with XChaCha20-Poly1305, streamed in constant memory
 - **Password-based encryption** with Argon2id key derivation
 - **Zero-configuration setup** - works immediately after install
 - **Secure memory management** with automatic zeroization
@@ -122,19 +122,26 @@ cargocrypt tui
 ## 📊 Performance Benchmarks
 
 **Encryption/Decryption Performance:**
-- **Throughput**: 1.0-1.2 GB/s (ChaCha20-Poly1305)
-- **Key Derivation**: 110ms-6.8s (configurable security profiles)
-- **Memory Usage**: 4MB-1GB (adaptive based on security level)
-- **Setup Time**: <60 seconds (480x faster than server-based solutions)
+Measured with `cargo bench --bench crypto_bench` on a 2-vCPU cloud VM
+(2026-10-01). Expect different numbers on your hardware; run it yourself.
+
+- **File encryption** (streaming, XChaCha20-Poly1305): ~800 MiB/s
+- **File decryption**: ~600 MiB/s
+- **In-memory container** seal / open at 64 KiB and above: ~650 / ~680 MiB/s
+- **Key derivation** (Argon2id): ~2 ms Fast, ~136 ms Balanced; Secure and
+  Paranoid are not benchmarked by default
+- **Secret scanning**: ~10 MiB/s of source text
+- **Memory**: the Argon2 cost of the chosen profile plus a few 64 KiB buffers,
+  independent of file size
 
 **Security Profiles:**
 
-| Profile  | Memory | Time  | Parallelism | Use Case |
+| Profile  | Memory  | Passes | Lanes | Use Case |
 |----------|--------|-------|-------------|----------|
-| Fast     | 4 MB   | 1 iter| 8 threads   | Development/Testing |
-| Balanced | 64 MB  | 3 iter| 4 threads   | Production (Default) |
-| Secure   | 256 MB | 4 iter| 4 threads   | Sensitive Data |
-| Paranoid | 1 GB   | 10 iter| 4 threads  | Maximum Security |
+| Fast     | 4 MiB   | 1  | 1  | Development/Testing |
+| Balanced | 64 MiB  | 3  | 4  | Default |
+| Secure   | 256 MiB | 5  | 8  | Sensitive Data |
+| Paranoid | 1 GiB   | 10 | 16 | Maximum Security |
 
 ## 🔧 Configuration
 
@@ -196,8 +203,6 @@ pre_commit_hooks = true         # Automatic secret scanning
 # Run full test suite
 cargo test
 
-# Run comprehensive functionality tests
-./comprehensive_test.sh
 
 # Performance benchmarks
 cargo run --example performance_test --release

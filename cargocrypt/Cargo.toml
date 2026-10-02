@@ -90,9 +90,6 @@ futures = "0.3"
 name = "crypto_bench"
 harness = false
 
-[[bench]]
-name = "vs_rustyvault"
-harness = false
 
 # Argon2 at opt-level 0 is ~30x slower and dominates the test suite. Optimise
 # just the KDF and cipher crates in dev and test builds.

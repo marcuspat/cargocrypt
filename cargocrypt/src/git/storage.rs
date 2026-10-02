@@ -587,7 +587,7 @@ impl GitObjectStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::{PlaintextSecret, SecretType};
+    use crate::crypto::PlaintextSecret;
     use crate::EncryptionOptions;
     use tempfile::TempDir;
 

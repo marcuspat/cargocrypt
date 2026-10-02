@@ -1302,8 +1302,6 @@ struct LineInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::TempDir;
 
     #[test]
     fn test_scan_config_creation() {
@@ -1320,9 +1318,22 @@ mod tests {
     #[test]
     fn test_should_skip_file() {
         let scanner = FileScanner::new(ScanConfig::default()).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, "content").unwrap();
+            path
+        };
 
-        // This test would need actual files to be meaningful
-        // In practice, we'd create temporary files with different extensions
+        assert!(scanner
+            .should_skip_file(&write("logo.png"))
+            .unwrap()
+            .is_some());
+        assert!(scanner
+            .should_skip_file(&write("main.rs"))
+            .unwrap()
+            .is_none());
+        assert!(scanner.should_skip_file(&write(".env")).unwrap().is_none());
     }
 
     #[test]
@@ -1457,11 +1468,9 @@ commit da39a3ee5e6b4b0d3255bfef95601890afd80709
         let findings = scanner.scan_content(content, path).unwrap();
         assert!(!findings.is_empty());
 
-        // Should find contextual patterns
-        let contextual_finding = findings
-            .iter()
-            .find(|f| f.detector_name == "contextual_analyzer");
-        // Note: may or may not find contextual patterns depending on existing pattern matches
+        // Which detector claims each value depends on rule precedence; what
+        // matters is that both assignments are reported.
+        assert_eq!(findings.len(), 2, "{:?}", findings);
     }
 
     #[test]

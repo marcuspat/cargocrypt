@@ -21,7 +21,8 @@ jobs:
       - run: cargo build --release
       - run: cargo test
       - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
+      # Benches, examples and tests are linted too: an unchecked target rots.
+      - run: cargo clippy --all-targets -- -D warnings
       # The scanner must stay quiet on its own repository.
       - name: Secret scan (self)
         working-directory: .

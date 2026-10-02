@@ -7,7 +7,6 @@ pub mod algorithm;
 pub mod engine;
 pub mod errors;
 pub mod keys;
-pub mod mock;
 pub mod secrets;
 pub mod security;
 pub mod store;
@@ -67,7 +66,7 @@ mod tests {
     #[test]
     fn test_module_exports() {
         // Test that all public exports are accessible
-        let _engine = CryptoEngine::new();
-        assert!(true, "Module exports are accessible");
+        let engine = CryptoEngine::new();
+        assert_eq!(engine.performance_profile(), PerformanceProfile::Balanced);
     }
 }

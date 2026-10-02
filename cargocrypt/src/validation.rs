@@ -504,7 +504,7 @@ mod tests {
 
         // Valid relative path
         let result = validator.validate_file_path("./test/file.txt");
-        assert!(result.is_valid || result.warnings.len() > 0); // May have warnings but should be valid
+        assert!(result.is_valid || !result.warnings.is_empty()); // May have warnings but should be valid
     }
 
     #[test]

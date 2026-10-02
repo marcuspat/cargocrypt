@@ -12,7 +12,7 @@ Working branch: `claude/sota-loop`. One item per loop, in order.
 3. Every change ships with tests that fail without it.
 4. Gates, judged by exit code, all must pass before committing:
    - `cargo fmt --check`
-   - `cargo clippy -- -D warnings` (`--all-targets` once item 8 lands)
+   - `cargo clippy --all-targets -- -D warnings`
    - `cargo test`
 5. Tick the item, add a line under "Log", commit, `git fetch origin main`,
    push, update the draft PR description.
@@ -101,7 +101,7 @@ Ordered by how badly they undercut what the README promises.
       `backup_originals` defaults to true, which leaves a world-readable
       plaintext `<file>.backup` beside every encrypted file. Load the config;
       make the backup opt-in.
-- [ ] 8. Make every target compile and lint: repair or delete
+- [x] 8. Make every target compile and lint: repair or delete
       `benches/vs_rustyvault.rs`, fix test lints, CI runs
       `clippy --all-targets -D warnings`. (Test time is already handled:
       loop 2 took the unit suite from ~200 s to ~6 s.)
@@ -193,3 +193,16 @@ Ordered by how badly they undercut what the README promises.
   those are now assembled at run time. Not done here: the engine API still
   takes `&str` passwords, and `[key_params]` in the config is still ignored
   (the profile decides the KDF cost) — both noted under item 13.
+- Loop 8 (2026-10-01): `cargo clippy --all-targets -- -D warnings` passes and
+  CI enforces it. `benches/vs_rustyvault.rs` is deleted: it did not compile
+  and "benchmarked" a competitor implemented as `thread::sleep` calls (the
+  retraction in `PERFORMANCE_SUMMARY.md` already said as much).
+  `benches/crypto_bench.rs` did not compile either and is rewritten against
+  the current API: key derivation, container seal/open/parse, streaming
+  encrypt/decrypt, scanning. README performance figures are replaced with
+  the measured ones (about 800 MiB/s streaming encryption, 600 MiB/s
+  decryption, 136 ms Balanced key derivation, 10 MiB/s scanning, on a 2-vCPU
+  VM); the README had claimed 1.0-1.2 GB/s. The profile table now matches
+  the code. Placeholder tests (`assert!(true)`, an empty mock module, a test
+  with no assertions) are removed or made real; the performance example no
+  longer prints an invented memory figure. 216 tests.
