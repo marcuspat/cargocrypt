@@ -1,6 +1,6 @@
 //! Atomic, owner-only file output.
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, TryRngCore};
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -45,7 +45,8 @@ impl AtomicFile {
         // `create_new` refuses to follow or reuse an existing path, so a
         // collision (or a planted symlink) is an error rather than a clobber.
         for _ in 0..16 {
-            let temp_path = directory.join(format!(".{}.{:016x}.tmp", name, OsRng.next_u64()));
+            let temp_path =
+                directory.join(format!(".{}.{:016x}.tmp", name, OsRng.try_next_u64().unwrap()));
             match options.open(&temp_path) {
                 Ok(file) => {
                     return Ok(Self {
