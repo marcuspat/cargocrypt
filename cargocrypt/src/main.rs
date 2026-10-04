@@ -394,7 +394,7 @@ async fn run_scan(
             // not block the commit. This loop reads index blobs and so never
             // reaches should_skip_file — the same predicate applies here
             // (gate r1).
-            if SecretDetector::is_lock_file(std::path::Path::new(&path)) {
+            if cargocrypt::detection::FileScanner::is_lock_file(std::path::Path::new(&path)) {
                 continue;
             }
             // Scan what is about to be committed, not the working tree copy.
