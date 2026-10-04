@@ -581,6 +581,28 @@ impl FileScanner {
     }
 
     /// Check if a file should be skipped
+    /// Dependency lock files are machine-written checksum lists — high-entropy
+    /// strings by design. Shared by the filesystem scan path AND the
+    /// `scan --staged` loop, which reads index blobs and so bypasses
+    /// `should_skip_file`'s metadata checks by necessity (gate r1: the skip
+    /// used to be unreachable from the one path that gates commits).
+    pub fn is_lock_file(path: &Path) -> bool {
+        const LOCK_FILES: [&str; 9] = [
+            "Cargo.lock",
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "go.sum",
+            "poetry.lock",
+            "Pipfile.lock",
+            "composer.lock",
+            "Gemfile.lock",
+        ];
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|name| LOCK_FILES.contains(&name))
+    }
+
     fn should_skip_file(&self, path: &Path) -> CryptoResult<Option<String>> {
         // Check file size
         let metadata = fs::metadata(path)?;
@@ -594,21 +616,8 @@ impl FileScanner {
         }
 
         // Dependency lock files are machine-written lists of checksums.
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            const LOCK_FILES: [&str; 9] = [
-                "Cargo.lock",
-                "package-lock.json",
-                "yarn.lock",
-                "pnpm-lock.yaml",
-                "go.sum",
-                "poetry.lock",
-                "Pipfile.lock",
-                "composer.lock",
-                "Gemfile.lock",
-            ];
-            if LOCK_FILES.contains(&name) {
-                return Ok(Some("Dependency lock file".to_string()));
-            }
+        if Self::is_lock_file(path) {
+            return Ok(Some("Dependency lock file".to_string()));
         }
 
         // Check extension

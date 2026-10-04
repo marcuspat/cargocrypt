@@ -123,6 +123,30 @@ fn staged_mode_scans_the_index_not_the_working_tree() {
 }
 
 #[test]
+fn staged_mode_skips_lock_files() {
+    // gate r1: a routine `cargo update` stages Cargo.lock — its checksum
+    // garden must not block the commit on the path that gates commits
+    let dir = tree_with_secret();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(status.status.success(), "git {:?}", args);
+    };
+    git(&["init", "-q"]);
+    let checksums = "checksum = \"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2\"\n";
+    fs::write(
+        dir.path().join("Cargo.lock"),
+        checksums.repeat(80),
+    )
+    .unwrap();
+    git(&["add", "Cargo.lock"]);
+    scan(&dir).arg("--staged").assert().code(0);
+}
+
+#[test]
 fn cargocryptignore_excludes_paths() {
     let dir = tree_with_secret();
     fs::create_dir(dir.path().join("fixtures")).unwrap();

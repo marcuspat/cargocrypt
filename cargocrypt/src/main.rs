@@ -2,7 +2,7 @@
 //!
 //! Zero-config cryptographic operations for Rust projects
 
-use cargocrypt::{CargoCrypt, CargoCryptError, CryptoResult};
+use cargocrypt::{CargoCrypt, CargoCryptError, CryptoResult, SecretDetector};
 use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 use std::{path::PathBuf, sync::Arc};
@@ -389,6 +389,14 @@ async fn run_scan(
     let mut findings = Vec::new();
     if staged {
         for path in staged_files()? {
+            // Lock files are skipped on the staged path too: a routine
+            // `cargo update` stages Cargo.lock, and its checksum garden must
+            // not block the commit. This loop reads index blobs and so never
+            // reaches should_skip_file — the same predicate applies here
+            // (gate r1).
+            if SecretDetector::is_lock_file(std::path::Path::new(&path)) {
+                continue;
+            }
             // Scan what is about to be committed, not the working tree copy.
             let blob = std::process::Command::new("git")
                 .arg("show")
