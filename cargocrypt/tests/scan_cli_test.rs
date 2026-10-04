@@ -149,7 +149,10 @@ fn staged_mode_skips_lock_files() {
     git(&["add", ".env"]);
     let out = scan(&dir).arg("--staged").assert().code(1);
     let stdout = String::from_utf8_lossy(&out.get_output().stdout);
-    assert!(stdout.contains(".env"), "staged secret must be reported: {stdout}");
+    assert!(
+        stdout.contains(".env"),
+        "staged secret must be reported: {stdout}"
+    );
     assert!(
         !stdout.contains("Cargo.lock"),
         "staged lock file must be skipped: {stdout}"
