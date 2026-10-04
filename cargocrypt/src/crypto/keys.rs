@@ -3,7 +3,7 @@
 use crate::crypto::{defaults, CryptoError, CryptoResult};
 use argon2::{Argon2, Params};
 use chacha20poly1305::Key;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, TryRngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop};

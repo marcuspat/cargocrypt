@@ -89,12 +89,12 @@ impl SecureRandom {
             return Err("Requested size too large for security".to_string());
         }
 
-        use rand::RngCore;
+        use rand::TryRngCore;
         let mut rng = rand::rngs::OsRng;
         let mut bytes = vec![0u8; size];
 
         // Validate that we got random data (basic entropy check)
-        rng.fill_bytes(&mut bytes);
+        rng.try_fill_bytes(&mut bytes).map_err(|e| e.to_string())?;
 
         // Simple entropy validation - ensure not all zeros or all same value
         let first_byte = bytes[0];
