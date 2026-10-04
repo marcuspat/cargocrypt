@@ -252,7 +252,8 @@ impl GitIntegration {
         ));
 
         // Write encrypted data to file
-        let encrypted_bytes = bincode::serialize(&encrypted)
+        let encrypted_bytes = encrypted
+            .to_bytes()
             .map_err(|e| GitError::SerializationFailed(format!("Failed to serialize: {}", e)))?;
         tokio::fs::write(&encrypted_path, encrypted_bytes)
             .await
@@ -283,7 +284,7 @@ impl GitIntegration {
             .map_err(GitError::Io)?;
 
         // Deserialize encrypted data
-        let encrypted: EncryptedSecret = bincode::deserialize(&encrypted_data)
+        let encrypted: EncryptedSecret = EncryptedSecret::from_bytes(&encrypted_data)
             .map_err(|e| GitError::SerializationFailed(format!("Failed to deserialize: {}", e)))?;
 
         // Decrypt the data

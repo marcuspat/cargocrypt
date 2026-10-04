@@ -427,8 +427,6 @@ impl GitIgnoreManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
     use tempfile::TempDir;
 
     #[tokio::test]

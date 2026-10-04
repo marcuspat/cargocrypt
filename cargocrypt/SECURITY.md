@@ -1,329 +1,95 @@
-# CargoCrypt Security Guide
-
-## Overview
-
-CargoCrypt implements enterprise-grade cryptographic security with comprehensive protections against modern attack vectors. This document outlines the security features, threat model, and best practices for secure usage.
-
-## Security Features
-
-### Core Cryptographic Security
-
-#### Authenticated Encryption
-- **Primary Algorithm**: ChaCha20-Poly1305 (default)
-  - Authenticated encryption with associated data (AEAD)
-  - Resistant to timing and cache-timing attacks
-  - Post-quantum secure
-  - No known vulnerabilities in software implementations
-
-- **Secondary Algorithm**: AES-256-GCM (optional)
-  - Industry standard with hardware acceleration
-  - Potential side-channel vulnerabilities in software
-  - Recommended only with hardware AES-NI support
-
-#### Key Derivation
-- **Algorithm**: Argon2id (latest version)
-- **Protection Levels**:
-  - Basic: 8MB memory, 1 iteration, 1 thread
-  - Standard: 64MB memory, 3 iterations, 4 threads
-  - High: 256MB memory, 5 iterations, 8 threads
-  - Paranoid: 1GB memory, 10 iterations, 16 threads
-
-#### Random Number Generation
-- **Source**: OS cryptographic random number generator (OsRng)
-- **Entropy Validation**: Basic statistical tests to detect obvious failures
-- **Secure Memory**: All random data uses secure buffers with automatic zeroization
-
-### Attack Mitigations
-
-#### Timing Attack Prevention
-- **Constant-time operations**: All critical cryptographic operations use constant-time implementations
-- **Minimum operation time**: Configurable minimum execution time to prevent timing analysis
-- **Random jitter**: Optional random delays to obfuscate timing patterns
-- **Password verification**: Uses constant-time comparison for all password operations
-
-#### Side-Channel Attack Resistance
-- **Memory access patterns**: Designed to minimize data-dependent memory accesses
-- **Cache-line alignment**: Sensitive data structures aligned to prevent cache-line sharing
-- **Algorithm selection**: ChaCha20-Poly1305 preferred for its resistance to cache-timing attacks
-- **Secure memory**: Cache-aligned buffers with padding to prevent information leakage
-
-#### Memory Protection
-- **Automatic zeroization**: All sensitive data automatically cleared from memory
-- **Secure buffers**: Custom SecureBuffer type with guaranteed cleanup
-- **Stack protection**: Sensitive operations use heap-allocated secure memory
-- **Memory alignment**: 64-byte alignment for cache-line protection
-
-#### Information Leakage Prevention
-- **Debug implementations**: Sensitive data redacted in debug output
-- **Error messages**: Generic error messages to prevent information disclosure
-- **Serialization**: Only encrypted data is serialized, never plaintext
-
-## Protection Levels
-
-### Basic Protection
-- **Use case**: Development, testing, non-sensitive data
-- **Performance**: Fastest operations
-- **Security**: Basic protections, suitable for low-threat environments
-- **Key derivation**: Minimal parameters for speed
-
-### Standard Protection (Default)
-- **Use case**: General production use
-- **Performance**: Balanced security and performance
-- **Security**: Comprehensive protection against common attacks
-- **Key derivation**: Moderate parameters for good security
-
-### High Protection
-- **Use case**: Sensitive production data
-- **Performance**: Higher CPU and memory usage
-- **Security**: Strong protection against sophisticated attacks
-- **Key derivation**: High parameters for strong security
-
-### Paranoid Protection
-- **Use case**: Highly sensitive or classified data
-- **Performance**: Significant resource usage
-- **Security**: Maximum protection against all known attacks
-- **Key derivation**: Maximum parameters for ultimate security
-
-## Threat Model
-
-### Threats Addressed
-
-#### Local Adversary
-- **Memory dumps**: Protected by automatic zeroization
-- **Swap files**: Mitigated by secure memory allocation
-- **Core dumps**: Sensitive data cleared before potential crashes
-- **Process memory**: Constant-time operations prevent timing analysis
-
-#### Network Adversary
-- **Man-in-the-middle**: Not applicable (local encryption)
-- **Traffic analysis**: Not applicable (local encryption)
-- **Protocol attacks**: Not applicable (no network protocol)
-
-#### Side-Channel Adversary
-- **Timing attacks**: Constant-time operations and minimum timing
-- **Cache-timing attacks**: Algorithm choice and memory layout
-- **Power analysis**: Software protections where possible
-- **Electromagnetic emanations**: Standard software mitigations
-
-#### Cryptographic Adversary
-- **Known plaintext**: AEAD provides authenticated encryption
-- **Chosen plaintext**: Secure nonce generation prevents attacks
-- **Chosen ciphertext**: Authentication tag prevents tampering
-- **Differential cryptanalysis**: ChaCha20 is resistant to differential attacks
-
-### Threats Not Addressed
-
-#### Physical Adversary
-- **Hardware tampering**: Requires hardware security modules
-- **Physical key extraction**: Software-only solution cannot prevent
-- **Cold boot attacks**: Requires hardware memory encryption
-- **DMA attacks**: Requires IOMMU or hardware protections
-
-#### Social Engineering
-- **Password extraction**: Users must protect passwords
-- **Credential theft**: Multi-factor authentication recommended
-- **Insider threats**: Access controls are application responsibility
-
-#### Advanced Persistent Threats
-- **Code injection**: Requires system-level protections
-- **Rootkit installation**: Requires OS-level security
-- **Supply chain attacks**: Requires secure development practices
-
-## Security Best Practices
-
-### For Developers
-
-#### Password Management
-```rust
-// Use strong passwords with validation
-let engine = HardenedCryptoEngine::new(ProtectionLevel::High);
-let result = engine.encrypt_secure(data, strong_password, None).await;
-
-// Never log or print passwords
-// ❌ Don't do this
-println!("Password: {}", password);
-
-// ✅ Do this instead
-tracing::info!("Password validation completed");
-```
-
-#### Protection Level Selection
-```rust
-// Choose appropriate protection level
-let protection_level = match sensitivity {
-    DataSensitivity::Low => ProtectionLevel::Basic,
-    DataSensitivity::Medium => ProtectionLevel::Standard,
-    DataSensitivity::High => ProtectionLevel::High,
-    DataSensitivity::Classified => ProtectionLevel::Paranoid,
-};
-```
-
-#### Error Handling
-```rust
-// Handle errors securely - don't leak information
-match crypto_operation() {
-    Ok(result) => result,
-    Err(_) => {
-        // ❌ Don't expose detailed error information
-        // return Err(format!("Crypto failed: {}", e));
-        
-        // ✅ Use generic error messages
-        return Err("Cryptographic operation failed".to_string());
-    }
-}
-```
-
-#### Memory Management
-```rust
-// Use secure buffers for sensitive data
-let mut sensitive_data = SecureBuffer::new(32);
-// Data is automatically zeroized when dropped
-
-// Explicitly clear sensitive variables when possible
-let mut password = get_password();
-// ... use password ...
-password.zeroize(); // Clear immediately after use
-```
-
-### For System Administrators
-
-#### Environment Security
-- Ensure adequate system memory for chosen protection level
-- Use systems with hardware random number generators when available
-- Enable memory protection features (ASLR, DEP, stack canaries)
-- Monitor for unusual memory or CPU usage patterns
-
-#### Deployment Considerations
-- Use Paranoid protection level for classified data
-- Implement proper access controls around encrypted data
-- Regular security audits and penetration testing
-- Monitor audit logs for security events
-
-### For End Users
-
-#### Password Security
-- Use long, complex passwords (minimum 12 characters)
-- Include mix of uppercase, lowercase, numbers, and symbols
-- Avoid dictionary words and common patterns
-- Use unique passwords for different encrypted datasets
-
-#### Operational Security
-- Protect passwords using proper password managers
-- Avoid entering passwords on shared or untrusted systems
-- Clear clipboard after copying encrypted data
-- Regularly rotate encryption passwords for sensitive data
-
-## Security Audit and Monitoring
-
-### Audit Logging
-```rust
-// Security operations are automatically logged
-let engine = HardenedCryptoEngine::new(ProtectionLevel::High);
-
-// Get audit statistics
-let stats = engine.get_security_stats().await;
-println!("Security operations: {}", stats.total_operations);
-println!("Success rate: {:.2}%", 
-    stats.successful_operations as f64 / stats.total_operations as f64 * 100.0);
-
-// Review audit log
-let audit_log = engine.get_audit_log().await;
-for entry in audit_log {
-    if !entry.success {
-        eprintln!("Failed operation: {} at {}", entry.operation, entry.timestamp);
-    }
-}
-```
-
-### Security Assessment
-```rust
-// Perform security audit
-let audit_result = engine.security_audit().await;
-
-if !audit_result.timing_protection {
-    eprintln!("Warning: Timing attack protection disabled");
-}
-
-if !audit_result.memory_protection {
-    eprintln!("Warning: Memory protection not active");
-}
-
-// Check for recommendations
-for recommendation in &audit_result.recommendations {
-    eprintln!("Security recommendation: {}", recommendation);
-}
-```
-
-### Performance Monitoring
-- Monitor key derivation times for anomalies
-- Track memory usage during cryptographic operations
-- Verify entropy quality in random number generation
-- Assess timing variance in password verification
-
-## Compliance and Standards
-
-### Cryptographic Standards
-- **NIST SP 800-38D**: Galois/Counter Mode implementation guidelines
-- **RFC 8439**: ChaCha20-Poly1305 specification compliance
-- **RFC 9106**: Argon2 password hashing standard
-- **FIPS 140-2**: Cryptographic module security requirements (where applicable)
-
-### Security Frameworks
-- **OWASP**: Cryptographic storage guidelines
-- **NIST Cybersecurity Framework**: Core security functions
-- **ISO 27001**: Information security management
-- **Common Criteria**: Security evaluation criteria
-
-## Vulnerability Reporting
-
-### Responsible Disclosure
-If you discover a security vulnerability in CargoCrypt:
-
-1. **Do not** create a public issue or disclosure
-2. Email security details to the maintainers (contact information in README)
-3. Provide detailed reproduction steps and impact assessment
-4. Allow reasonable time for investigation and patching
-
-### Security Updates
-- Subscribe to security advisories for timely updates
-- Test security updates in non-production environments first
-- Maintain secure backup and recovery procedures
-- Document security configuration and changes
-
-## Known Limitations
-
-### Software-Only Security
-- Cannot protect against physical memory access
-- Vulnerable to privileged malware or rootkits
-- Limited protection against hardware-level attacks
-- Dependent on OS security for foundational protection
-
-### Performance Considerations
-- Higher protection levels require significant resources
-- Key derivation scales with security requirements
-- Memory usage increases with protection level
-- Timing protections add computational overhead
-
-### Implementation Constraints
-- Limited to software-based random number generation
-- Cannot prevent all side-channel attacks in software
-- Dependent on underlying cryptographic library security
-- No protection against social engineering or user errors
-
-## Future Enhancements
-
-### Planned Security Features
-- Hardware security module (HSM) integration
-- Additional authenticated encryption algorithms
-- Enhanced entropy gathering and validation
-- Formal security verification and proof
-
-### Research Areas
-- Post-quantum cryptography preparation
-- Homomorphic encryption capabilities
-- Zero-knowledge proof integration
-- Advanced side-channel resistance techniques
-
----
-
-This security guide is maintained with the CargoCrypt codebase and updated with each security-relevant change. For the most current security information, always refer to the latest version in the repository.
+# CargoCrypt security notes
+
+This describes what the code does today. It replaces an earlier document that
+listed features which were never implemented (AES-256-GCM, timing jitter,
+cache-line-aligned buffers, "post-quantum" claims).
+
+CargoCrypt has had no independent security audit. Treat it accordingly.
+
+## Reporting a vulnerability
+
+Open a private security advisory on the GitHub repository. Please do not file
+a public issue for anything exploitable.
+
+## What is protected
+
+**File and secret contents at rest.** A file encrypted with a strong
+passphrase is confidential and tamper-evident against someone who obtains the
+ciphertext.
+
+| | |
+|---|---|
+| Cipher | XChaCha20-Poly1305 (192-bit random nonce) |
+| Key derivation | Argon2id v1.3, cost set by the profile and recorded in the file |
+| Files | Streamed in 64 KiB chunks with the STREAM construction; reordering and truncation fail authentication |
+| Headers and metadata | Authenticated as associated data |
+| Output | Written to a temporary file with mode `0600`, synced, then renamed; removed on failure |
+| Team keys | Sealed per member: ephemeral X25519, HKDF-SHA256, XChaCha20-Poly1305 |
+
+Profiles: Fast 4 MiB / 1 pass / 1 lane (development only), Balanced
+64 MiB / 3 / 4 (default), Secure 256 MiB / 5 / 8, Paranoid 1 GiB / 10 / 16.
+
+Container formats, magic `CCRY`: version 3 (streaming files), version 2
+(single-shot secrets). Version 1 files written by 0.2.3 and earlier are still
+read; `cargocrypt rekey` converts them.
+
+Implementations come from the RustCrypto crates (`chacha20poly1305`, `argon2`),
+`x25519-dalek` and `ring`. The test suite pins them to published vectors:
+RFC 8439, the XChaCha draft, RFC 7748, and an Argon2id value computed with the
+reference C implementation.
+
+## What is not protected
+
+- **A weak passphrase.** Argon2id slows guessing; it does not rescue a short
+  or reused password. The Fast profile is cheap to attack by design.
+- **A compromised machine.** Malware or another user with access to your
+  account can read plaintext, passwords and memory.
+- **File names, sizes and timing.** An encrypted file's name, its approximate
+  length and when it changed are visible.
+- **The plaintext original.** `cargocrypt encrypt` writes an encrypted copy
+  and leaves the original in place. Remove it yourself; on SSDs and
+  copy-on-write filesystems "secure deletion" is not something a tool can
+  promise. A secret that has already been committed to git must be rotated,
+  not just encrypted.
+- **Memory.** Keys and passwords held by CargoCrypt are zeroized on drop where
+  the code owns them, but the library API still accepts passwords as `&str`,
+  the allocator may leave copies, and nothing prevents swapping or core dumps.
+- **Side channels.** Constant-time behaviour is whatever the underlying
+  crates provide. CargoCrypt adds no timing jitter or cache countermeasures.
+- **Team membership.** Member records, roles and the audit log are plain JSON
+  in the repository and are not signed. Anyone who can push can add a member
+  or change a role, so repository write access is equivalent to team
+  administration. Removing a member does not revoke a key they have already
+  read: rotate it. There is no command-line interface for team operations.
+- **Post-quantum attackers.** X25519 key agreement is not post-quantum
+  secure. Symmetric encryption with a 256-bit key is believed to be.
+
+## Passwords
+
+- Interactive prompt, `--password-file`, `CARGOCRYPT_PASSWORD_FILE`, or the
+  first line of stdin with `--password-stdin`. Only one trailing newline is
+  removed; other whitespace is part of the password.
+- The git filters also accept `CARGOCRYPT_PASSWORD`. An environment variable
+  is visible to other processes of the same user; prefer the file form.
+- `git config cargocrypt.password` is no longer read. It stored the password
+  in clear text in `.git/config`.
+- Minimum length is 8 characters. That is a floor, not a recommendation: use
+  a long passphrase.
+
+## Secret scanning
+
+`cargocrypt scan` is a heuristic. It will miss secrets it has no rule for and
+will sometimes flag things that are not secrets. A clean scan is not proof
+that a repository holds no credentials. Reports never contain the secret
+itself: findings carry a four-character preview and a fingerprint.
+
+## Known limitations of this release
+
+- The monitoring dashboard (`cargocrypt monitor dashboard`) displays sample
+  data and is not connected to live metrics.
+- `monitor metrics`, `alerts`, `export` and `health` report on the current
+  process only, which for a one-shot command is empty.
+- The terminal UI was upgraded to a new `ratatui` release without interactive
+  testing.
+- `bincode` 1.x, used only to read version 1 containers, is unmaintained.
+- GitHub Actions in CI are pinned by tag rather than by commit SHA.

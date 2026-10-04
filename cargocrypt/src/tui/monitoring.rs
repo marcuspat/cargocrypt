@@ -84,7 +84,10 @@ impl MonitoringDashboard {
     async fn run_app<B: Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        B::Error: 'static,
+    {
         loop {
             if self.last_update.elapsed() >= self.update_interval {
                 self.last_update = Instant::now();
@@ -124,7 +127,7 @@ impl MonitoringDashboard {
     }
 
     fn ui(&self, f: &mut Frame) {
-        let size = f.size();
+        let size = f.area();
 
         // Create the main layout
         let chunks = Layout::default()
@@ -369,22 +372,24 @@ impl MonitoringDashboard {
             Row::new(vec!["key_derivation", "3", "2.1s", "0.0%"]),
         ];
 
-        let table = Table::new(rows)
-            .widths(&[
+        let table = Table::new(
+            rows,
+            [
                 Constraint::Percentage(40),
                 Constraint::Percentage(20),
                 Constraint::Percentage(20),
                 Constraint::Percentage(20),
-            ])
-            .header(
-                Row::new(vec!["Operation", "Count", "Avg Time", "Error %"])
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
-            )
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Operation Stats"),
-            );
+            ],
+        )
+        .header(
+            Row::new(vec!["Operation", "Count", "Avg Time", "Error %"])
+                .style(Style::default().add_modifier(Modifier::BOLD)),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Operation Stats"),
+        );
 
         f.render_widget(table, chunks[2]);
     }
@@ -441,6 +446,13 @@ impl MonitoringDashboard {
 
     fn render_status_bar(&self, f: &mut Frame, area: Rect) {
         let status_text = vec![Line::from(vec![
+            // Every figure on these tabs is a layout placeholder. Nothing is
+            // read from `MonitoringManager` yet, and saying so on screen is
+            // better than showing invented numbers as if they were live.
+            Span::styled(
+                "SAMPLE DATA, not live metrics. ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::styled("Press ", Style::default().fg(Color::Gray)),
             Span::styled(
                 "q",

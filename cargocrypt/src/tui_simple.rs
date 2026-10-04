@@ -351,7 +351,7 @@ fn render_ui(app: &TuiApp, frame: &mut Frame) {
             Constraint::Length(3), // Status
             Constraint::Length(2), // Help
         ])
-        .split(frame.size());
+        .split(frame.area());
 
     // Header
     let header = Paragraph::new(format!(
@@ -399,7 +399,7 @@ fn render_ui(app: &TuiApp, frame: &mut Frame) {
         })
         .collect();
 
-    let mut list_state = app.list_state.clone();
+    let mut list_state = app.list_state;
     let file_list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Files"))
         .highlight_style(Style::default().bg(Color::Blue));

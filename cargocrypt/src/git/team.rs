@@ -1,11 +1,28 @@
 //! Team key sharing for CargoCrypt
 //!
-//! This module provides secure team key sharing via Git repositories,
-//! enabling multiple team members to access encrypted files while
-//! maintaining security and auditability.
+//! Shared keys are stored in the repository, wrapped separately for each
+//! member with that member's X25519 public key
+//! ([`crate::crypto::envelope`]). Reading a key requires the member's secret
+//! key, which never enters the repository.
+//!
+//! # What this does and does not give you
+//!
+//! - **Confidentiality against repository readers.** Someone with a clone but
+//!   no member secret key cannot recover a shared key.
+//! - **Granting is explicit.** Adding a member records their public key; it
+//!   does not hand them existing keys. An existing holder grants each key
+//!   with [`TeamKeySharing::grant_key`], which needs that holder's secret.
+//! - **Removal is not revocation.** Deleting a member's wrapped copy does not
+//!   make them forget a key they already read. Rotate the key and re-encrypt
+//!   what it protected.
+//! - **No authentication of the member list yet.** Member files, roles and
+//!   the audit log are plain JSON in the working tree: anyone who can push
+//!   can add a member or edit a role. Entries are not signed, so treat
+//!   repository write access as equivalent to team administration.
 
 use super::{GitError, GitRepo, GitResult};
-use crate::crypto::{CryptoEngine, DerivedKey, EncryptedSecret, PlaintextSecret};
+use crate::crypto::envelope::{self, RecipientPublicKey, RecipientSecretKey};
+use crate::crypto::{CryptoEngine, DerivedKey};
 use base64ct::{Base64, Encoding};
 use git2::Signature;
 use ring::rand::SystemRandom;
@@ -46,7 +63,8 @@ impl Default for KeyShareConfig {
 pub struct TeamMember {
     /// Member identifier (email or username)
     pub id: String,
-    /// Member's public key for encryption
+    /// Member's X25519 public key, hex encoded: what shared keys are sealed
+    /// to. Generate a pair with [`RecipientSecretKey::generate`].
     pub public_key: String,
     /// Member's signing key (Ed25519 public key)
     pub signing_key: String,
@@ -141,7 +159,9 @@ pub struct SharedKey {
     pub encrypted_for_members: HashMap<String, String>,
     /// Key metadata
     pub metadata: KeyMetadata,
-    /// Digital signature of the key
+    /// Reserved. Always empty: keys are not signed yet. (An earlier version
+    /// filled this with an HMAC under a constant, which anyone could forge.)
+    #[serde(default)]
     pub signature: String,
 }
 
@@ -200,7 +220,10 @@ pub struct OnboardingResult {
 pub struct OnboardingPackage {
     /// Member ID
     pub member_id: String,
-    /// Temporary access token
+    /// Reserved. Always empty. (An earlier version issued a "token"
+    /// encrypted under a constant; possession of a member secret key is the
+    /// only credential.)
+    #[serde(default)]
     pub access_token: String,
     /// Team configuration
     pub team_config: KeyShareConfig,
@@ -228,19 +251,6 @@ pub struct OffboardingSummary {
     pub keys_revoked: usize,
     /// Role of the removed member
     pub role: TeamRole,
-}
-
-/// Access token data structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AccessTokenData {
-    /// Member ID
-    member_id: String,
-    /// Member role
-    role: TeamRole,
-    /// When the token was issued
-    issued_at: u64,
-    /// When the token expires
-    expires_at: u64,
 }
 
 /// Token revocation entry
@@ -368,6 +378,15 @@ impl TeamKeySharing {
             )));
         }
 
+        // A member who cannot receive keys is a misconfiguration, not a
+        // member: reject a malformed public key now rather than at first use.
+        RecipientPublicKey::from_hex(&member.public_key).map_err(|e| {
+            GitError::TeamSharingFailed(format!(
+                "Member {} has no usable public key: {}",
+                member.id, e
+            ))
+        })?;
+
         // Store member information
         let member_path = self
             .team_dir
@@ -381,8 +400,9 @@ impl TeamKeySharing {
             GitError::TeamSharingFailed(format!("Failed to write member file: {}", e))
         })?;
 
-        // Re-encrypt existing keys for the new member
-        self.reencrypt_keys_for_new_member(&member).await?;
+        // Existing keys are not handed over here: wrapping one for a new
+        // member means unwrapping it first, which takes a current holder's
+        // secret key. See `grant_key`.
 
         // Commit changes to git
         self.commit_team_changes(&format!("Add team member: {}", member.id))
@@ -481,13 +501,13 @@ impl TeamKeySharing {
             .generate_key()
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to generate key: {}", e)))?;
 
-        // Encrypt the key for each team member
+        // Seal the key to each active member's public key
+        let key_id = self.generate_key_id();
         let mut encrypted_for_members = HashMap::new();
 
         for member in &members {
             if member.active {
-                // Encrypt key using member's access credentials
-                let encrypted_key = self.encrypt_key_for_member(&key_material, member).await?;
+                let encrypted_key = self.encrypt_key_for_member(&key_material, member, &key_id)?;
                 encrypted_for_members.insert(member.id.clone(), encrypted_key);
             }
         }
@@ -510,17 +530,12 @@ impl TeamKeySharing {
             ),
         };
 
-        // Create digital signature for the key
-        let signature = self
-            .create_key_signature(&key_material, &metadata, created_by)
-            .await?;
-
         // Create shared key
         let shared_key = SharedKey {
-            id: self.generate_key_id(),
+            id: key_id,
             encrypted_for_members,
             metadata,
-            signature,
+            signature: String::new(),
         };
 
         // Store the shared key
@@ -538,7 +553,15 @@ impl TeamKeySharing {
     }
 
     /// Get a shared key for a specific member
-    pub async fn get_shared_key(&self, key_id: &str, member_id: &str) -> GitResult<DerivedKey> {
+    ///
+    /// `secret` is the member's own secret key; the wrapped copy in the
+    /// repository cannot be opened without it.
+    pub async fn get_shared_key(
+        &self,
+        key_id: &str,
+        member_id: &str,
+        secret: &RecipientSecretKey,
+    ) -> GitResult<DerivedKey> {
         let shared_key = self.load_shared_key(key_id).await?;
 
         // Check if member has access to this key
@@ -552,11 +575,55 @@ impl TeamKeySharing {
                 ))
             })?;
 
-        // Decrypt the key for this member
-        let member = self.get_member(member_id).await?;
-        let decrypted_key = self.decrypt_key_for_member(encrypted_key, &member).await?;
+        self.decrypt_key_for_member(encrypted_key, member_id, key_id, secret)
+    }
 
-        Ok(decrypted_key)
+    /// Give `recipient_id` access to an existing key.
+    ///
+    /// `granter_id` must already hold the key and proves it by supplying
+    /// their secret key, which unwraps the key so it can be sealed again to
+    /// the recipient's public key.
+    pub async fn grant_key(
+        &self,
+        key_id: &str,
+        granter_id: &str,
+        granter_secret: &RecipientSecretKey,
+        recipient_id: &str,
+    ) -> GitResult<()> {
+        let granter = self.get_member(granter_id).await?;
+        if !granter.active || !granter.can_perform(&TeamOperation::AddMember) {
+            return Err(GitError::TeamSharingFailed(format!(
+                "Member {} may not grant keys",
+                granter_id
+            )));
+        }
+        let recipient = self.get_member(recipient_id).await?;
+        if !recipient.active {
+            return Err(GitError::TeamSharingFailed(format!(
+                "Member {} is not active",
+                recipient_id
+            )));
+        }
+
+        let key_material = self
+            .get_shared_key(key_id, granter_id, granter_secret)
+            .await?;
+        let sealed = self.encrypt_key_for_member(&key_material, &recipient, key_id)?;
+
+        let mut shared_key = self.load_shared_key(key_id).await?;
+        shared_key
+            .encrypted_for_members
+            .insert(recipient.id.clone(), sealed);
+        self.store_shared_key(&shared_key).await?;
+
+        self.log_team_operation(
+            "key_grant",
+            granter_id,
+            &format!("Granted key {} to {}", key_id, recipient_id),
+        )
+        .await?;
+        self.commit_team_changes(&format!("Grant key {} to {}", key_id, recipient_id))
+            .await
     }
 
     /// Rotate all team keys
@@ -716,109 +783,58 @@ impl TeamKeySharing {
         hex::encode(random_bytes)
     }
 
-    /// Encrypt a key for a specific team member
-    async fn encrypt_key_for_member(
+    /// Associated data binding a wrapped key to its key id and its member.
+    fn envelope_context(key_id: &str, member_id: &str) -> Vec<u8> {
+        let mut context = Vec::with_capacity(key_id.len() + member_id.len() + 1);
+        context.extend_from_slice(key_id.as_bytes());
+        context.push(0);
+        context.extend_from_slice(member_id.as_bytes());
+        context
+    }
+
+    /// Seal a key to one member's public key.
+    fn encrypt_key_for_member(
         &self,
         key: &DerivedKey,
-        _member: &TeamMember,
+        member: &TeamMember,
+        key_id: &str,
     ) -> GitResult<String> {
-        // For now, use a simple encryption scheme
-        // In a real implementation, this would use the member's public key
-        let key_hex = key.to_hex();
-        let plaintext = PlaintextSecret::from_string(key_hex);
-
-        let encrypted = self
-            .crypto
-            .encrypt_data(plaintext.as_bytes(), "team_key_password")
-            .await
-            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt key: {}", e)))?;
-
-        // Serialize to base64
-        let serialized = bincode::serialize(&encrypted).map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to serialize encrypted key: {}", e))
+        let recipient = RecipientPublicKey::from_hex(&member.public_key).map_err(|e| {
+            GitError::TeamSharingFailed(format!(
+                "Member {} has no usable public key: {}",
+                member.id, e
+            ))
         })?;
+        let material = zeroize::Zeroizing::new(key.to_hex());
+        let sealed = envelope::seal(
+            material.as_bytes(),
+            &recipient,
+            &Self::envelope_context(key_id, &member.id),
+        )
+        .map_err(|e| GitError::TeamSharingFailed(format!("Failed to seal key: {}", e)))?;
 
-        Ok(Base64::encode_string(&serialized))
+        Ok(Base64::encode_string(&sealed))
     }
 
-    /// Decrypt a key for a specific team member
-    async fn decrypt_key_for_member(
+    /// Open a member's wrapped copy of a key with that member's secret key.
+    fn decrypt_key_for_member(
         &self,
         encrypted_key: &str,
-        _member: &TeamMember,
+        member_id: &str,
+        key_id: &str,
+        secret: &RecipientSecretKey,
     ) -> GitResult<DerivedKey> {
-        // Deserialize from base64
-        let serialized = Base64::decode_vec(encrypted_key).map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to decode encrypted key: {}", e))
+        let sealed = Base64::decode_vec(encrypted_key).map_err(|e| {
+            GitError::TeamSharingFailed(format!("Failed to decode wrapped key: {}", e))
         })?;
+        let material = envelope::open(&sealed, secret, &Self::envelope_context(key_id, member_id))
+            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to open key: {}", e)))?;
+        let key_hex = std::str::from_utf8(&material)
+            .map_err(|e| GitError::TeamSharingFailed(format!("Wrapped key is not valid: {}", e)))?;
 
-        let encrypted: EncryptedSecret = bincode::deserialize(&serialized).map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to deserialize encrypted key: {}", e))
-        })?;
-
-        let decrypted = self
-            .crypto
-            .decrypt_data(&encrypted, "team_key_password")
-            .map_err(|e| GitError::TeamSharingFailed(format!("Failed to decrypt key: {}", e)))?;
-
-        // Convert back to DerivedKey (assuming it was stored as hex)
-        let key_hex = String::from_utf8(decrypted).map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to convert decrypted data: {}", e))
-        })?;
-
-        DerivedKey::from_hex(&key_hex).map_err(|e| {
+        DerivedKey::from_hex(key_hex).map_err(|e| {
             GitError::TeamSharingFailed(format!("Failed to create derived key: {}", e))
         })
-    }
-
-    /// Re-encrypt keys for a new member
-    async fn reencrypt_keys_for_new_member(&self, new_member: &TeamMember) -> GitResult<()> {
-        let shared_keys = self.list_shared_keys().await?;
-
-        for mut shared_key in shared_keys {
-            // Decrypt the key using system access (admin operation)
-            if let Some((admin_id, encrypted_key)) = shared_key.encrypted_for_members.iter().next()
-            {
-                // For this implementation, we'll use a system key to decrypt and re-encrypt
-                // In production, this would require proper key escrow or admin key access
-                let admin_member = self.get_member(admin_id).await?;
-
-                match self
-                    .decrypt_key_for_member(encrypted_key, &admin_member)
-                    .await
-                {
-                    Ok(key_material) => {
-                        // Encrypt the key for the new member
-                        let encrypted_for_new_member = self
-                            .encrypt_key_for_member(&key_material, new_member)
-                            .await?;
-                        shared_key
-                            .encrypted_for_members
-                            .insert(new_member.id.clone(), encrypted_for_new_member);
-
-                        // Update the stored key
-                        self.store_shared_key(&shared_key).await?;
-
-                        // Log the re-encryption
-                        self.log_team_operation(
-                            "key_reencryption",
-                            "system",
-                            &format!(
-                                "Re-encrypted key {} for new member {}",
-                                shared_key.id, new_member.id
-                            ),
-                        )
-                        .await?;
-                    }
-                    Err(_) => {
-                        // If we can't decrypt with this member, try the next one
-                        continue;
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Re-encrypt keys without a removed member
@@ -905,41 +921,6 @@ impl TeamKeySharing {
             .signature()
             .or_else(|_| Signature::now("CargoCrypt Team", "team@cargocrypt.local"))
             .map_err(|e| GitError::TeamSharingFailed(format!("Failed to create signature: {}", e)))
-    }
-
-    /// Create a digital signature for a key
-    async fn create_key_signature(
-        &self,
-        key: &DerivedKey,
-        metadata: &KeyMetadata,
-        signer_id: &str,
-    ) -> GitResult<String> {
-        // Create a signature over the key and metadata
-        let mut data_to_sign = Vec::new();
-        data_to_sign.extend_from_slice(key.key().as_slice());
-        data_to_sign.extend_from_slice(&metadata.created_at.to_le_bytes());
-        data_to_sign.extend_from_slice(metadata.purpose.as_bytes());
-        data_to_sign.extend_from_slice(signer_id.as_bytes());
-
-        // Use HMAC-SHA256 for the signature with the signer's signing key
-        use ring::hmac;
-        let signing_key = hmac::Key::new(hmac::HMAC_SHA256, b"CargoCrypt-Team-Key-Signature");
-        let signature = hmac::sign(&signing_key, &data_to_sign);
-
-        Ok(hex::encode(signature.as_ref()))
-    }
-
-    /// Verify a key signature
-    #[allow(dead_code)]
-    async fn verify_key_signature(
-        &self,
-        key: &DerivedKey,
-        metadata: &KeyMetadata,
-        signature: &str,
-        signer_id: &str,
-    ) -> GitResult<bool> {
-        let expected_signature = self.create_key_signature(key, metadata, signer_id).await?;
-        Ok(expected_signature == signature)
     }
 
     /// Log team operations for audit trail
@@ -1164,16 +1145,13 @@ impl TeamKeySharing {
             invited_by.to_string(),
         );
 
-        // Generate a temporary access token for the new member
-        let access_token = self.generate_access_token(&member).await?;
-
         // Add member to team
         self.add_member(member.clone()).await?;
 
         // Prepare onboarding package
         let onboarding_package = OnboardingPackage {
             member_id: member_id.clone(),
-            access_token,
+            access_token: String::new(),
             team_config: self.config.clone(),
             available_keys: self.list_available_keys_for_member(&member_id).await?,
         };
@@ -1247,43 +1225,6 @@ impl TeamKeySharing {
         self.remove_member(member_id).await?;
 
         Ok(OffboardingResult { member, summary })
-    }
-
-    /// Generate a temporary access token for member authentication
-    async fn generate_access_token(&self, member: &TeamMember) -> GitResult<String> {
-        let token_data = AccessTokenData {
-            member_id: member.id.clone(),
-            role: member.role.clone(),
-            issued_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            expires_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                + (7 * 24 * 60 * 60), // 7 days
-        };
-
-        let token_json = serde_json::to_string(&token_data).map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to serialize token: {}", e))
-        })?;
-
-        // Encrypt the token with a team secret
-        let plaintext = PlaintextSecret::from_string(token_json);
-        let encrypted_token = EncryptedSecret::encrypt_with_password(
-            plaintext,
-            "team_access_token_secret", // In production, use a proper team secret
-            None,
-        )
-        .map_err(|e| GitError::TeamSharingFailed(format!("Failed to encrypt token: {}", e)))?;
-
-        // Serialize and encode the encrypted token
-        let token_bytes = encrypted_token.to_bytes().map_err(|e| {
-            GitError::TeamSharingFailed(format!("Failed to serialize encrypted token: {}", e))
-        })?;
-
-        Ok(Base64::encode_string(&token_bytes))
     }
 
     /// List available keys for a specific member
@@ -1442,60 +1383,68 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    struct Fixture {
+        _dir: TempDir,
+        team: TeamKeySharing,
+    }
+
+    async fn fixture() -> Fixture {
+        let dir = TempDir::new().unwrap();
+        let repo = GitRepo::init(dir.path()).unwrap();
+        let crypto = CryptoEngine::new();
+        let team = TeamKeySharing::new(&repo, &crypto).unwrap();
+        team.initialize().await.unwrap();
+        Fixture { _dir: dir, team }
+    }
+
+    fn member(id: &str, role: TeamRole) -> (TeamMember, RecipientSecretKey) {
+        let secret = RecipientSecretKey::generate().unwrap();
+        let member = TeamMember::new(
+            id.to_string(),
+            secret.public_key().to_hex(),
+            String::new(),
+            role,
+            "system".to_string(),
+        );
+        (member, secret)
+    }
+
     #[tokio::test]
     async fn test_team_key_sharing_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let repo = GitRepo::init(temp_dir.path()).unwrap();
-        let crypto = CryptoEngine::new();
-        let team_sharing = TeamKeySharing::new(&repo, &crypto).unwrap();
-
-        team_sharing.initialize().await.unwrap();
-
-        assert!(team_sharing.team_dir.exists());
-        assert!(team_sharing.team_dir.join("config.toml").exists());
+        let f = fixture().await;
+        assert!(f.team.team_dir.exists());
+        assert!(f.team.team_dir.join("config.toml").exists());
     }
 
     #[tokio::test]
     async fn test_add_team_member() {
-        let temp_dir = TempDir::new().unwrap();
-        let repo = GitRepo::init(temp_dir.path()).unwrap();
-        let crypto = CryptoEngine::new();
-        let team_sharing = TeamKeySharing::new(&repo, &crypto).unwrap();
+        let f = fixture().await;
+        let (alice, _) = member("alice@example.com", TeamRole::Admin);
+        f.team.add_member(alice).await.unwrap();
 
-        team_sharing.initialize().await.unwrap();
-
-        let member = TeamMember::new(
-            "alice@example.com".to_string(),
-            "public_key_alice".to_string(),
-            "signing_key_alice".to_string(),
-            TeamRole::Admin,
-            "system".to_string(),
-        );
-
-        team_sharing.add_member(member).await.unwrap();
-
-        let members = team_sharing.get_members().await.unwrap();
+        let members = f.team.get_members().await.unwrap();
         assert_eq!(members.len(), 1);
         assert_eq!(members[0].id, "alice@example.com");
     }
 
     #[tokio::test]
-    async fn test_member_permissions() {
-        let owner = TeamMember::new(
-            "owner@example.com".to_string(),
-            "pk".to_string(),
-            "sk".to_string(),
-            TeamRole::Owner,
+    async fn test_member_without_a_real_public_key_is_rejected() {
+        let f = fixture().await;
+        let bogus = TeamMember::new(
+            "mallory@example.com".to_string(),
+            "public_key_mallory".to_string(),
+            String::new(),
+            TeamRole::Member,
             "system".to_string(),
         );
+        assert!(f.team.add_member(bogus).await.is_err());
+        assert!(f.team.get_members().await.unwrap().is_empty());
+    }
 
-        let readonly = TeamMember::new(
-            "readonly@example.com".to_string(),
-            "pk".to_string(),
-            "sk".to_string(),
-            TeamRole::ReadOnly,
-            "system".to_string(),
-        );
+    #[tokio::test]
+    async fn test_member_permissions() {
+        let (owner, _) = member("owner@example.com", TeamRole::Owner);
+        let (readonly, _) = member("readonly@example.com", TeamRole::ReadOnly);
 
         assert!(owner.can_perform(&TeamOperation::AddMember));
         assert!(owner.can_perform(&TeamOperation::RotateKeys));
@@ -1505,33 +1454,157 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_shared_key_generation() {
-        let temp_dir = TempDir::new().unwrap();
-        let repo = GitRepo::init(temp_dir.path()).unwrap();
-        let crypto = CryptoEngine::new();
-        let team_sharing = TeamKeySharing::new(&repo, &crypto).unwrap();
+    async fn test_shared_key_opens_only_with_the_members_secret() {
+        let f = fixture().await;
+        let (alice, alice_secret) = member("alice@example.com", TeamRole::Admin);
+        let (bob, bob_secret) = member("bob@example.com", TeamRole::Member);
+        f.team.add_member(alice).await.unwrap();
+        f.team.add_member(bob).await.unwrap();
 
-        team_sharing.initialize().await.unwrap();
+        let shared = f
+            .team
+            .generate_shared_key("test", "alice@example.com")
+            .await
+            .unwrap();
+        assert!(shared.signature.is_empty());
+        assert_eq!(shared.encrypted_for_members.len(), 2);
 
-        // Add a team member first
-        let member = TeamMember::new(
-            "alice@example.com".to_string(),
-            "public_key_alice".to_string(),
-            "signing_key_alice".to_string(),
-            TeamRole::Admin,
-            "system".to_string(),
-        );
-        team_sharing.add_member(member).await.unwrap();
+        let for_alice = f
+            .team
+            .get_shared_key(&shared.id, "alice@example.com", &alice_secret)
+            .await
+            .unwrap();
+        let for_bob = f
+            .team
+            .get_shared_key(&shared.id, "bob@example.com", &bob_secret)
+            .await
+            .unwrap();
+        assert_eq!(for_alice.key().as_slice(), for_bob.key().as_slice());
 
-        // Generate shared key
-        let shared_key = team_sharing
+        // Bob's secret does not open Alice's copy, and an outsider's opens nothing.
+        assert!(f
+            .team
+            .get_shared_key(&shared.id, "alice@example.com", &bob_secret)
+            .await
+            .is_err());
+        let outsider = RecipientSecretKey::generate().unwrap();
+        assert!(f
+            .team
+            .get_shared_key(&shared.id, "bob@example.com", &outsider)
+            .await
+            .is_err());
+    }
+
+    /// The wrapped copies used to be encrypted under the constant
+    /// "team_key_password": anyone with a clone could read every team key.
+    #[tokio::test]
+    async fn test_wrapped_keys_do_not_open_with_the_old_constant_password() {
+        let f = fixture().await;
+        let (alice, _) = member("alice@example.com", TeamRole::Admin);
+        f.team.add_member(alice).await.unwrap();
+        let shared = f
+            .team
             .generate_shared_key("test", "alice@example.com")
             .await
             .unwrap();
 
-        assert!(!shared_key.id.is_empty());
-        assert!(shared_key
-            .encrypted_for_members
-            .contains_key("alice@example.com"));
+        let blob = Base64::decode_vec(&shared.encrypted_for_members["alice@example.com"]).unwrap();
+        let opened = crate::crypto::EncryptedSecret::from_bytes(&blob)
+            .and_then(|secret| secret.decrypt_with_password("team_key_password"));
+        assert!(opened.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_new_member_needs_an_explicit_grant() {
+        let f = fixture().await;
+        let (alice, alice_secret) = member("alice@example.com", TeamRole::Admin);
+        f.team.add_member(alice).await.unwrap();
+        let shared = f
+            .team
+            .generate_shared_key("test", "alice@example.com")
+            .await
+            .unwrap();
+
+        // Carol joins after the key exists: she gets nothing automatically.
+        let (carol, carol_secret) = member("carol@example.com", TeamRole::Member);
+        f.team.add_member(carol).await.unwrap();
+        assert!(f
+            .team
+            .get_shared_key(&shared.id, "carol@example.com", &carol_secret)
+            .await
+            .is_err());
+
+        // A grant needs a holder's secret; Carol cannot grant to herself.
+        assert!(f
+            .team
+            .grant_key(
+                &shared.id,
+                "carol@example.com",
+                &carol_secret,
+                "carol@example.com"
+            )
+            .await
+            .is_err());
+        // Nor can someone claiming to be Alice without her secret.
+        assert!(f
+            .team
+            .grant_key(
+                &shared.id,
+                "alice@example.com",
+                &carol_secret,
+                "carol@example.com"
+            )
+            .await
+            .is_err());
+
+        f.team
+            .grant_key(
+                &shared.id,
+                "alice@example.com",
+                &alice_secret,
+                "carol@example.com",
+            )
+            .await
+            .unwrap();
+        let for_carol = f
+            .team
+            .get_shared_key(&shared.id, "carol@example.com", &carol_secret)
+            .await
+            .unwrap();
+        let for_alice = f
+            .team
+            .get_shared_key(&shared.id, "alice@example.com", &alice_secret)
+            .await
+            .unwrap();
+        assert_eq!(for_carol.key().as_slice(), for_alice.key().as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_wrapped_copy_is_bound_to_its_key_and_member() {
+        let f = fixture().await;
+        let (alice, alice_secret) = member("alice@example.com", TeamRole::Admin);
+        f.team.add_member(alice).await.unwrap();
+        let first = f
+            .team
+            .generate_shared_key("first", "alice@example.com")
+            .await
+            .unwrap();
+        let mut second = f
+            .team
+            .generate_shared_key("second", "alice@example.com")
+            .await
+            .unwrap();
+
+        // Splice the first key's wrapped copy into the second key's record.
+        second.encrypted_for_members.insert(
+            "alice@example.com".to_string(),
+            first.encrypted_for_members["alice@example.com"].clone(),
+        );
+        f.team.store_shared_key(&second).await.unwrap();
+        assert!(f
+            .team
+            .get_shared_key(&second.id, "alice@example.com", &alice_secret)
+            .await
+            .is_err());
     }
 }

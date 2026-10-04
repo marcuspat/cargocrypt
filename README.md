@@ -1,279 +1,177 @@
 # CargoCrypt 🔐
 
-**Zero-config cryptographic operations for Rust projects**
+**Encrypt secrets in a Rust project, and catch the ones you forgot.**
 
 [![Crates.io](https://img.shields.io/crates/v/cargocrypt.svg)](https://crates.io/crates/cargocrypt)
 [![License](https://img.shields.io/crates/l/cargocrypt.svg)](LICENSE-MIT)
 
-CargoCrypt brings zero-configuration cryptography to your Rust workflow: file encryption, git-integrated secret detection, and team key sharing.
+CargoCrypt is a command-line tool and library that does three things:
 
-## Version 0.2.3
+- **Encrypts files** with a passphrase: Argon2id key derivation,
+  XChaCha20-Poly1305, streamed so memory use does not grow with file size.
+- **Scans for secrets** committed in plain text, with output for humans, JSON
+  or SARIF.
+- **Integrates with git**: a pre-commit hook that runs the scan, and optional
+  clean/smudge filters.
 
-**135 of 135 unit tests passing as of 2026-08-11 (147/147 across the full suite: unit + integration + doctests). Previously known failure clusters have been fixed; see the Testing section below for details.**
+It has had no independent security audit. Read [SECURITY.md](cargocrypt/SECURITY.md)
+for what it does and does not protect before trusting it with anything that
+matters.
 
-### What's New in v0.2.0
+> The version published on crates.io (0.2.3) predates most of what is
+> described here. This README describes 0.3.0, which is not yet published.
+> See the [changelog](cargocrypt/CHANGELOG.md) before upgrading.
 
-✅ **Complete Feature Set:**
-- **Full-featured TUI interface** with file browser and directory traversal
-- **Secret detection** with entropy analysis and regex pattern matching
-- **Comprehensive Git integration** (hooks, filters, attributes, team collaboration)
-- **Real-time performance monitoring** with metrics dashboard and alerts
-- **Circuit breaker resilience patterns** with automatic error recovery
-- **Security hardening** with timing attack prevention and secure memory
-- **Team collaboration features** with secure key distribution
-
-## Quick Start
-
-```bash
-# Install from crates.io
-cargo install cargocrypt
-
-# Initialize in your project (zero config!)
-cargocrypt init
-
-# Initialize with git integration
-cargocrypt init --git
-
-# Encrypt sensitive files
-cargocrypt encrypt src/secrets.rs
-
-# Decrypt when needed
-cargocrypt decrypt src/secrets.rs.enc
-
-# Interactive TUI mode with full file browser
-cargocrypt tui
-
-# Real-time monitoring dashboard
-cargocrypt monitor dashboard
-```
-
-## 🔥 Complete Feature Set
-
-### Core Operations
-- **File encryption/decryption** with ChaCha20-Poly1305 (1.0+ GB/s)
-- **Password-based encryption** with Argon2id key derivation
-- **Zero-configuration setup** - works immediately after install
-- **Secure memory management** with automatic zeroization
-- **Multiple security profiles** (Fast, Balanced, Secure, Paranoid)
-
-### Advanced Features
-- **Interactive TUI** with file browser and visual progress indicators
-- **Git integration** with hooks, filters, and automatic secret detection
-- **Team collaboration** with secure key sharing through git
-- **Real-time monitoring** with metrics collection and alerting
-- **Secret detection** for 50+ secret types via regex + entropy scoring (false-positive rate not independently benchmarked)
-- **Performance optimization** with circuit breakers and retry logic
-
-### Command Reference
+## Install
 
 ```bash
-# Project Management
-cargocrypt init [--git]              # Initialize project with optional git integration
-cargocrypt config                    # Show current configuration
-
-# File Operations  
-cargocrypt encrypt <file>            # Encrypt individual files
-cargocrypt decrypt <file>            # Decrypt individual files
-
-# Interactive Interfaces
-cargocrypt tui                       # Launch full-featured TUI with file browser
-cargocrypt monitor dashboard         # Real-time monitoring dashboard
-cargocrypt monitor metrics           # Show current system metrics
-cargocrypt monitor alerts            # Show performance alerts
-
-# Git Integration
-cargocrypt git install-hooks         # Install git hooks for automatic secret detection
-cargocrypt git uninstall-hooks       # Remove git hooks
-cargocrypt git configure-attributes  # Configure git attributes for encryption
-cargocrypt git update-ignore         # Update .gitignore with CargoCrypt patterns
-
-# Advanced Features
-cargocrypt monitor server            # Start monitoring HTTP server
-cargocrypt monitor export            # Export metrics to JSON
-cargocrypt monitor health            # System health check
+cargo install --path cargocrypt     # from a checkout; needs Rust 1.88+
 ```
 
-## 🎨 Interactive TUI
-
-Launch the full-featured terminal interface:
+## Quick start
 
 ```bash
-cargocrypt tui
+cargocrypt init                         # write .cargocrypt/config.toml
+cargocrypt encrypt secrets.env          # -> secrets.env.enc (asks for a passphrase)
+cargocrypt verify secrets.env.enc       # check it is intact; writes nothing
+cargocrypt decrypt secrets.env.enc      # -> secrets.env
+cargocrypt scan                         # look for secrets under the current directory
 ```
 
-**TUI Features:**
-- **File browser** with directory traversal and selection
-- **Visual encryption/decryption** with progress indicators  
-- **Real-time configuration** viewer and editor
-- **Performance monitoring** integrated displays
-- **Team collaboration** status and key management
-- **Security alerts** and recommendation system
-- **Help system** with contextual guidance
+`encrypt` leaves the original file in place. Delete it yourself, and add it to
+`.gitignore`.
 
-## 📊 Performance Benchmarks
+## Commands
 
-**Encryption/Decryption Performance:**
-- **Throughput**: 1.0-1.2 GB/s (ChaCha20-Poly1305)
-- **Key Derivation**: 110ms-6.8s (configurable security profiles)
-- **Memory Usage**: 4MB-1GB (adaptive based on security level)
-- **Setup Time**: <60 seconds
+```bash
+# Files
+cargocrypt encrypt <file>            # encrypt to <file>.enc
+cargocrypt decrypt <file>            # decrypt; atomic, owner-only output
+cargocrypt verify <file>             # authenticate the whole file without writing plaintext
+cargocrypt rekey <file>              # new password and/or --profile, in place; upgrades old formats
 
-**Security Profiles:**
+# Secret scanning
+cargocrypt scan [paths]              # exit 0 clean, 1 findings, 2 error
+cargocrypt scan --staged             # scan what is about to be committed
+cargocrypt scan --format sarif -o results.sarif
+cargocrypt scan --baseline known.json   # report only what is new
 
-| Profile  | Memory | Time  | Parallelism | Use Case |
-|----------|--------|-------|-------------|----------|
-| Fast     | 4 MB   | 1 iter| 8 threads   | Development/Testing |
-| Balanced | 64 MB  | 3 iter| 4 threads   | Production (Default) |
-| Secure   | 256 MB | 4 iter| 4 threads   | Sensitive Data |
-| Paranoid | 1 GB   | 10 iter| 4 threads  | Maximum Security |
+# Git
+cargocrypt git install-hooks         # pre-commit: scan --staged; pre-push: advisory check
+cargocrypt git uninstall-hooks
+cargocrypt git configure-attributes  # set up clean/smudge filters (experimental)
+cargocrypt git update-ignore         # add CargoCrypt patterns to .gitignore
 
-## 🔧 Configuration
+# Project
+cargocrypt init [--git]
+cargocrypt config                    # show the effective configuration
+cargocrypt completions <shell>       # bash, zsh, fish, powershell, elvish
+```
 
-CargoCrypt works with zero configuration, but supports customization:
+Passwords come from an interactive prompt, `--password-file <path>`, the
+`CARGOCRYPT_PASSWORD_FILE` environment variable, or the first line of stdin
+with `--password-stdin`. Whitespace is part of the password.
+
+Experimental, and not to be relied on yet: `cargocrypt tui` (terminal UI) and
+`cargocrypt monitor …`. The monitoring dashboard displays sample data, and the
+other `monitor` subcommands report on the current process only.
+
+## Secret scanning
+
+Provider rules are anchored to each token format (AWS, GitHub classic and
+fine-grained, Anthropic, OpenAI, Google, npm, Slack, Stripe, SendGrid, Twilio,
+JWTs, PEM private keys, connection strings with embedded credentials). Generic
+detectors add keyword context and entropy, filtered by a plausibility check so
+that identifiers, hashes and URLs are not reported.
+
+Suppress a false positive in one of three ways:
+
+- a `cargocrypt:allow` comment on the line,
+- a `.cargocryptignore` file (gitignore syntax) for whole paths,
+- `--baseline <report.json>` to accept everything already known.
+
+Reports never contain the secret: each finding has a four-character preview
+and a fingerprint. A clean scan is not proof of a clean repository; the
+scanner only knows the formats it has rules for.
+
+Precision and recall are measured on a small labelled corpus in
+`cargocrypt/tests/scan_corpus_test.rs` (20 secrets, 36 benign lines, both 1.00
+at the time of writing). The corpus was written alongside the rules, so it
+guards against regressions; it is not an independent benchmark.
+
+## Configuration
+
+`.cargocrypt/config.toml` is optional. Missing keys take their defaults.
 
 ```toml
-# .cargocrypt/config.toml (optional)
-performance_profile = "Balanced"  # Fast, Balanced, Secure, Paranoid
-
-[key_params]
-memory_cost = 65536    # Memory for key derivation (64MB default)
-time_cost = 3          # Iteration count
-parallelism = 4        # Thread count
-output_length = 32     # Key length in bytes
+performance_profile = "Balanced"   # Fast, Balanced, Secure, Paranoid
 
 [file_ops]
-backup_originals = true  # Create .backup files during encryption
-
-[security]
-timing_attack_protection = true  # Constant-time operations
-secure_memory = true            # Automatic zeroization
-
-[monitoring]
-real_time_metrics = true        # Enable performance monitoring
-alert_thresholds = "balanced"   # Alert sensitivity
-
-[git_integration]
-auto_detect_secrets = true      # Regex + entropy-based secret detection
-team_key_sharing = true         # Secure collaborative key distribution
-pre_commit_hooks = true         # Automatic secret scanning
+backup_originals = false  # Opt in to a plaintext `.backup` copy (written 0600)
 ```
 
-## 🔒 Security
+| Profile  | Memory  | Passes | Lanes | Use |
+|----------|---------|--------|-------|-----|
+| Fast     | 4 MiB   | 1      | 1     | Development and tests only |
+| Balanced | 64 MiB  | 3      | 4     | Default |
+| Secure   | 256 MiB | 5      | 8     | Sensitive data |
+| Paranoid | 1 GiB   | 10     | 16    | Long-lived secrets |
 
-**Cryptographic Foundation:**
-- **ChaCha20-Poly1305** - Fast, secure authenticated encryption
-- **Argon2id** - Memory-hard key derivation function
-- **Ring cryptography** - Battle-tested, audited implementations
-- **Constant-time operations** - Protection against timing attacks
-- **Secure memory** - Automatic zeroization of sensitive data
+The cost is recorded in each encrypted file, so a file can always be opened
+regardless of the current profile. `[key_params]` in older config files is
+accepted and ignored.
 
-**Operational Security:**
-- **Secret detection** - 50+ secret types via regex + entropy scoring
-- **Git integration** - Prevent accidental secret commits
-- **Team security** - Secure key distribution through git
-- **Audit trails** - Comprehensive operation logging
-- **Real-time alerts** - Security event monitoring
+## Git filters (experimental)
 
-## 🧪 Testing & Quality
+`cargocrypt git configure-attributes` sets up clean/smudge filters so that
+files matching the configured patterns are stored encrypted. The password
+comes from `CARGOCRYPT_PASSWORD_FILE` or `CARGOCRYPT_PASSWORD`; without one
+the filter fails rather than storing plaintext.
 
-**Test status: 135/135 unit tests passing, 147/147 across the full suite (135 unit + 5 integration + 7 doctests), as of 2026-08-11.** All previously known failure clusters have been root-caused and fixed:
-- Entropy-based secret detection (`detection::entropy`, `detection::scanner`, `detection::detector`) - the natural-language check now tokenizes text and matches whole words against a dictionary instead of doing raw substring search; false-positive/sequential-pattern heuristics no longer reject genuine secrets that happen to contain short digit runs (e.g. `sk_test_FAKE1234567890ABCDEF`); and confidence scoring is now gated by the same entropy/charset thresholds used for classification, so strings that don't clear those thresholds can no longer score as high-confidence secrets.
-- Git-backed team storage (`git::storage`, `git::team`) - `EncryptedStorage::initialize` now creates the parent `.cargocrypt` directory before writing `storage.toml` (it did not exist yet on a fresh repo); team commits now stage the team directory with `index.add_all` (via a new `GitRepo::stage_all_under` helper) instead of passing a directory to `index.add_path`, which libgit2 rejects with "cannot create blob from '...': it is a directory".
-- `crypto::security::tests::test_secure_buffer` - `SecureBuffer::zeroize` now zeroizes the buffer's contents in place instead of calling `Vec::zeroize()`, which also truncates the buffer to empty; the intended security property is "overwritten with zeros," not "deallocated."
-- `git::hooks::tests::test_secret_pattern_matching` - the default secret-detection regexes now allow an optional leading quote before the character class, matching how the patterns are used against quoted config values.
-- `validation::tests::test_path_validation` - a missing parent directory is now reported as a warning rather than a hard validation error, since it is a legitimate, common state (e.g. a path whose directory will be created later).
+Known limitation: encryption is randomised, so the same file encrypts
+differently each time and git may show a filtered file as modified when it is
+not. Tools built for this (git-crypt, transcrypt) use deterministic encryption
+to avoid it.
+
+## Team key sharing (library only)
+
+`cargocrypt::git::TeamKeySharing` stores shared keys in the repository, sealed
+separately to each member's X25519 public key. There is no command-line
+interface for it, and member records are not signed: anyone who can push to
+the repository can change the member list. See SECURITY.md.
+
+## Performance
+
+Measured with `cargo bench --bench crypto_bench` on a 2-vCPU cloud VM
+(2026-10-01). Expect different numbers on your hardware; run it yourself.
+
+- **File encryption** (streaming, XChaCha20-Poly1305): ~800 MiB/s
+- **File decryption**: ~600 MiB/s
+- **In-memory container** seal / open at 64 KiB and above: ~650 / ~680 MiB/s
+- **Key derivation** (Argon2id): ~2 ms Fast, ~136 ms Balanced; Secure and
+  Paranoid are not benchmarked by default
+- **Secret scanning**: ~10 MiB/s of source text
+- **Memory**: the Argon2 cost of the chosen profile plus a few 64 KiB buffers,
+  independent of file size
+
+## Development
 
 ```bash
-# Run full test suite
-cargo test
-
-# Run comprehensive functionality tests
-./comprehensive_test.sh
-
-# Performance benchmarks
-cargo run --example performance_test --release
+cd cargocrypt
+cargo test                                   # unit, integration, property and doc tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
+cargo bench --bench crypto_bench
 ```
 
-**Test Categories:**
-- ✅ Core encryption/decryption operations
-- ✅ Password security and edge cases
-- ✅ File operations with various types (binary, text, empty)
-- ✅ Concurrent operations and performance
-- ✅ Git integration and team features
-- ✅ TUI interface functionality
-- ✅ Monitoring and alerting systems
-- ✅ Error handling and resilience patterns
+CI also runs the scanner on this repository, `cargo-deny`, a build on the
+minimum supported Rust version, and a short run of each fuzz target (see
+`cargocrypt/fuzz/README.md`).
 
-## 🛠️ Development
-
-### Building from Source
-
-```bash
-git clone https://github.com/marcuspat/cargocrypt
-cd cargocrypt/cargocrypt
-cargo build --release
-```
-
-### Development Tools
-
-```bash
-# Watch for changes during development
-cargo install cargo-watch
-cargo watch -x test
-
-# Fast testing
-cargo install cargo-nextest  
-cargo nextest run
-
-# Security audit
-cargo audit
-
-# Benchmark performance
-cargo run --example performance_test --release
-```
-
-## 🤝 Contributing
-
-We welcome contributions! See the Testing section above and [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) for current known issues before relying on this in production.
-
-**Contribution Areas:**
-- Additional secret detection patterns
-- Performance optimizations
-- Platform-specific enhancements
-- Documentation improvements
-- Integration with other tools
-
-## 📝 License
+## License
 
 Licensed under either of:
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT License ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
-
-## 🛣️ Roadmap
-
-### v0.3.0 (Next Release)
-- [ ] Hardware Security Module (HSM) integration
-- [ ] Advanced team role management with fine-grained permissions
-- [ ] Custom secret detection pattern training
-- [ ] API integrations for external secret stores (HashiCorp Vault, AWS Secrets Manager)
-
-### v1.0.0 (Stable Release)
-- [ ] Complete security audit and certification
-- [ ] Plugin ecosystem for extensibility
-- [ ] Enterprise deployment and management tools
-- [ ] Advanced analytics and compliance reporting
-
-## 🙏 Acknowledgments
-
-- **Rust Cryptography Community** - Ring, ChaCha20-Poly1305, Argon2 teams  
-- **Ratatui Community** - Beautiful terminal user interfaces
-- **Git Community** - Integration patterns and collaborative workflows
-- **Claude AI** - Development acceleration and intelligent code generation
-
----
-
-**🔒 Zero-Config Security. 🦀 Pure Rust.**
-
-**Under active development — see Testing section for current status. Built for teams. Optimized for Rust.**

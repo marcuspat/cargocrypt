@@ -1,12 +1,15 @@
 //! # Secret Detection Module
 //!
-//! ML-trained pattern detection for identifying secrets, API keys, tokens, and other
-//! sensitive information in source code and configuration files.
+//! Rule- and entropy-based detection of secrets, API keys, tokens and other
+//! credentials in source code and configuration files. There is no machine
+//! learning here: provider rules are regular expressions anchored to each
+//! token format, and the generic detectors combine keyword context, Shannon
+//! entropy and a plausibility check.
 //!
 //! ## Features
 //!
 //! - **High-performance scanning**: Uses parallel processing and efficient regex matching
-//! - **Low false positives**: ML-trained patterns with confidence scoring
+//! - **Measured precision**: see `tests/scan_corpus_test.rs` for the labelled corpus
 //! - **Comprehensive coverage**: Detects AWS keys, GitHub tokens, database credentials, etc.
 //! - **Smart filtering**: Respects .gitignore and supports custom ignore patterns
 //! - **Entropy analysis**: Identifies high-entropy strings that may be secrets
@@ -39,6 +42,8 @@ pub mod detector;
 pub mod entropy;
 pub mod findings;
 pub mod patterns;
+pub mod plausibility;
+pub mod report;
 pub mod rules;
 pub mod scanner;
 
@@ -46,6 +51,7 @@ pub use detector::{DetectionConfig, ScanOptions, SecretDetector};
 pub use entropy::{EntropyAnalyzer, EntropyResult};
 pub use findings::{ConfidenceLevel, Finding, FoundSecret};
 pub use patterns::{PatternMatch, SecretPattern, SecretType};
+pub use report::{ReportFinding, ReportFormat, ScanReport};
 pub use rules::{CustomRule, RuleEngine, RuleType};
 pub use scanner::{FileScanner, ScanResult};
 
