@@ -434,12 +434,37 @@ async fn run_scan(
         }
     }
 
-    // `.cargocryptignore` in the working directory: gitignore syntax, for
-    // fixtures and documentation that hold example credentials on purpose.
-    let ignore_file = std::path::Path::new(".cargocryptignore");
+    // `.cargocryptignore` lives at the SCAN ROOT — the repo being scanned —
+    // not the process CWD: `cargocrypt scan <path>` run from another
+    // directory must resolve the same suppressions an in-root run would,
+    // or known-benign fixtures fail the scan (gate r2). Staged mode anchors
+    // at the git toplevel; path mode at the first root argument.
+    let scan_root: PathBuf = if staged {
+        std::process::Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+    } else {
+        paths
+            .first()
+            .map(|p| {
+                if p.is_dir() {
+                    p.clone()
+                } else {
+                    p.parent().map(|d| d.to_path_buf()).unwrap_or_default()
+                }
+            })
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| PathBuf::from("."))
+    };
+    let ignore_file = scan_root.join(".cargocryptignore");
     if ignore_file.is_file() {
-        let mut builder = ignore::gitignore::GitignoreBuilder::new(".");
-        if let Some(e) = builder.add(ignore_file) {
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(&scan_root);
+        if let Some(e) = builder.add(&ignore_file) {
             return Err(CargoCryptError::Config {
                 message: format!(".cargocryptignore: {}", e),
                 suggestion: None,
@@ -450,7 +475,13 @@ async fn run_scan(
             suggestion: None,
         })?;
         findings.retain(|f| {
-            let path = f.file_path.strip_prefix("./").unwrap_or(&f.file_path);
+            // findings may carry root-prefixed or absolute paths: match
+            // relative to the ignore file's root either way
+            let rel = f
+                .file_path
+                .strip_prefix(&scan_root)
+                .unwrap_or(&f.file_path);
+            let path = rel.strip_prefix("./").unwrap_or(rel);
             !matcher.matched_path_or_any_parents(path, false).is_ignore()
         });
     }

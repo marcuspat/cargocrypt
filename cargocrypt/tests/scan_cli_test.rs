@@ -147,6 +147,29 @@ fn staged_mode_skips_lock_files() {
 }
 
 #[test]
+fn ignore_file_resolves_against_the_scan_root_not_the_cwd() {
+    // gate r2: `cargocrypt scan <path>` from an unrelated directory must
+    // resolve .cargocryptignore at the scanned root — an in-root run and an
+    // out-of-root run see the same suppressions
+    let dir = tree_with_secret();
+    fs::create_dir(dir.path().join("fixtures")).unwrap();
+    fs::write(
+        dir.path().join("fixtures/sample.env"),
+        format!("AWS_ACCESS_KEY_ID={}\n", SECRET),
+    )
+    .unwrap();
+    fs::write(dir.path().join(".cargocryptignore"), "fixtures/\n.env\n").unwrap();
+
+    // From an unrelated CWD, scanning the root by path: clean.
+    let elsewhere = TempDir::new().unwrap();
+    let mut cmd = Command::cargo_bin("cargocrypt").unwrap();
+    cmd.current_dir(elsewhere.path())
+        .arg("scan")
+        .arg(dir.path());
+    cmd.assert().code(0);
+}
+
+#[test]
 fn cargocryptignore_excludes_paths() {
     let dir = tree_with_secret();
     fs::create_dir(dir.path().join("fixtures")).unwrap();
