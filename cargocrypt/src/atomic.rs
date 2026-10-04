@@ -48,7 +48,7 @@ impl AtomicFile {
             let temp_path = directory.join(format!(
                 ".{}.{:016x}.tmp",
                 name,
-                OsRng.try_next_u64().unwrap()
+                OsRng.try_next_u64().map_err(io::Error::other)?
             ));
             match options.open(&temp_path) {
                 Ok(file) => {
