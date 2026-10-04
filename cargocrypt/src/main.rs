@@ -2,7 +2,7 @@
 //!
 //! Zero-config cryptographic operations for Rust projects
 
-use cargocrypt::{CargoCrypt, CargoCryptError, CryptoResult, SecretDetector};
+use cargocrypt::{CargoCrypt, CargoCryptError, CryptoResult};
 use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 use std::{path::PathBuf, sync::Arc};
@@ -394,7 +394,7 @@ async fn run_scan(
             // not block the commit. This loop reads index blobs and so never
             // reaches should_skip_file — the same predicate applies here
             // (gate r1).
-            if SecretDetector::is_lock_file(std::path::Path::new(&path)) {
+            if cargocrypt::detection::FileScanner::is_lock_file(std::path::Path::new(&path)) {
                 continue;
             }
             // Scan what is about to be committed, not the working tree copy.
@@ -415,12 +415,13 @@ async fn run_scan(
             }
         }
     } else {
-        let paths = if paths.is_empty() {
-            vec![PathBuf::from(".")]
+        let default_root = vec![PathBuf::from(".")];
+        let root_paths: &[PathBuf] = if paths.is_empty() {
+            &default_root
         } else {
-            paths
+            &paths
         };
-        for path in &paths {
+        for path in root_paths {
             if path.is_dir() {
                 findings.extend(detector.scan_directory(path, &options).await?);
             } else if path.is_file() {
@@ -477,10 +478,7 @@ async fn run_scan(
         findings.retain(|f| {
             // findings may carry root-prefixed or absolute paths: match
             // relative to the ignore file's root either way
-            let rel = f
-                .file_path
-                .strip_prefix(&scan_root)
-                .unwrap_or(&f.file_path);
+            let rel = f.file_path.strip_prefix(&scan_root).unwrap_or(&f.file_path);
             let path = rel.strip_prefix("./").unwrap_or(rel);
             !matcher.matched_path_or_any_parents(path, false).is_ignore()
         });

@@ -125,7 +125,10 @@ fn staged_mode_scans_the_index_not_the_working_tree() {
 #[test]
 fn staged_mode_skips_lock_files() {
     // gate r1: a routine `cargo update` stages Cargo.lock — its checksum
-    // garden must not block the commit on the path that gates commits
+    // garden must not block the commit on the path that gates commits.
+    // Falsifiable both ways: stage the lock file ALONGSIDE a real secret —
+    // the secret must be reported (exit 1, `.env` in stdout) while the lock
+    // file must not appear. Dropping or inverting the skip fails this test.
     let dir = tree_with_secret();
     let git = |args: &[&str]| {
         let status = std::process::Command::new("git")
@@ -136,14 +139,24 @@ fn staged_mode_skips_lock_files() {
         assert!(status.status.success(), "git {:?}", args);
     };
     git(&["init", "-q"]);
-    let checksums = "checksum = \"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2\"\n";
-    fs::write(
-        dir.path().join("Cargo.lock"),
-        checksums.repeat(80),
-    )
-    .unwrap();
+    let checksums =
+        "checksum = \"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2\"\n";
+    // A real pattern inside the lock file guarantees the skip is what keeps
+    // it out of the report — not the scanner failing to match checksums.
+    let lock_body = format!("{checksums}# key = {SECRET}\n");
+    fs::write(dir.path().join("Cargo.lock"), lock_body).unwrap();
     git(&["add", "Cargo.lock"]);
-    scan(&dir).arg("--staged").assert().code(0);
+    git(&["add", ".env"]);
+    let out = scan(&dir).arg("--staged").assert().code(1);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout);
+    assert!(
+        stdout.contains(".env"),
+        "staged secret must be reported: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Cargo.lock"),
+        "staged lock file must be skipped: {stdout}"
+    );
 }
 
 #[test]
