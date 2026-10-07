@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.svg" alt="cargocrypt — animated banner" width="100%"></p>
+
 # CargoCrypt 🔐
 
 **Encrypt secrets in a Rust project, and catch the ones you forgot.**
