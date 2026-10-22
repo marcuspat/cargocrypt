@@ -28,10 +28,10 @@ rpassword = "7"
 chacha20poly1305 = { version = "0.10", features = ["stream"] }
 argon2 = "0.6"
 zeroize = { version = "1.7", features = ["derive"] }
-rand = "0.10"
+rand = "0.9"
 subtle = "2.5"
 hex = "0.4"
-bincode = "2.0"
+bincode = "1"
 base64ct = "1.6"
 
 # Additional crypto utilities

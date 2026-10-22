@@ -9,6 +9,15 @@ updates:
       # Patch and minor bumps arrive as one PR; majors come individually.
       compatible:
         update-types: [minor, patch]
+    # Majors held back on purpose (2026-10-22): rand 0.10 drops
+    # rand::rngs::OsRng/TryRngCore and bincode 2 changes the vault
+    # serialization format (old vaults unreadable). Migrating is a
+    # deliberate project, not a drive-by bump.
+    ignore:
+      - dependency-name: rand
+        update-types: ["version-update:semver-major"]
+      - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
