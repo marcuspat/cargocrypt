@@ -55,6 +55,9 @@ jobs:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     needs: verify
+    # PRs stop at `verify` (one host build): the 4-target matrix incl. two
+    # macOS runners only burns minutes on tag pushes and tag dispatches.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       id-token: write # sign the provenance attestation (Sigstore, keyless)
@@ -87,7 +90,6 @@ jobs:
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
-        with:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
