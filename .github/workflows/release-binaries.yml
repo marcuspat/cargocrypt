@@ -46,9 +46,12 @@ jobs:
           toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cargocrypt
 
       # Fail fast on a tag that does not compile before burning matrix minutes.
       - name: cargo build (host)
+        working-directory: cargocrypt
         run: cargo build --release --locked
 
   binaries:
@@ -94,13 +97,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
+          workspaces: cargocrypt
           key: ${{ matrix.target }}
 
       - name: Install musl tooling
         if: matrix.musl
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
+      # The crate lives in cargocrypt/ (no root manifest): build from there,
+      # keep dist/ at the workspace root so `uses:` steps (attest, upload)
+      # see the same relative paths.
       - name: Build
+        working-directory: cargocrypt
         run: cargo build --release --locked --target ${{ matrix.target }} --bin cargocrypt
 
       - name: Package
@@ -108,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/cargocrypt" "dist/cargocrypt-${{ matrix.target }}"
+          cp "cargocrypt/target/${{ matrix.target }}/release/cargocrypt" "dist/cargocrypt-${{ matrix.target }}"
           cd dist
           shasum -a 256 "cargocrypt-${{ matrix.target }}" > "cargocrypt-${{ matrix.target }}.sha256"
 
@@ -116,6 +124,7 @@ jobs:
       # target's binary, published next to it.
       - name: Generate SBOM
         shell: bash
+        working-directory: cargocrypt
         run: |
           set -euo pipefail
           cargo install cargo-cyclonedx --locked --version "${CYCLONEDX_VERSION}"
@@ -125,7 +134,7 @@ jobs:
             echo "expected exactly one SBOM for ${{ matrix.target }}, got: $*" >&2
             exit 1
           fi
-          cp "$1" "dist/cargocrypt-${{ matrix.target }}.cdx.json"
+          cp "$1" "$GITHUB_WORKSPACE/dist/cargocrypt-${{ matrix.target }}.cdx.json"
 
       # SLSA build provenance: binds the binary's digest to this workflow run
       # and commit.
