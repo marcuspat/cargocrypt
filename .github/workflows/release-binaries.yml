@@ -36,7 +36,7 @@ jobs:
           echo "::error::start the dispatch with the tag as the ref: gh workflow run release-binaries.yml --ref <tag>" >&2
           exit 1
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.ref }}
 
@@ -46,21 +46,15 @@ jobs:
           toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: cargocrypt
 
       # Fail fast on a tag that does not compile before burning matrix minutes.
       - name: cargo build (host)
-        working-directory: cargocrypt
         run: cargo build --release --locked
 
   binaries:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     needs: verify
-    # PRs stop at `verify` (one host build): the 4-target matrix incl. two
-    # macOS runners only burns minutes on tag pushes and tag dispatches.
-    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       id-token: write # sign the provenance attestation (Sigstore, keyless)
@@ -79,13 +73,7 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
     steps:
-      - name: Dispatch must run on a tag
-        if: github.event_name == 'workflow_dispatch' && github.ref_type != 'tag'
-        run: |
-          echo "::error::start the dispatch with the tag as the ref: gh workflow run release-binaries.yml --ref <tag>" >&2
-          exit 1
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.ref }}
 
@@ -97,18 +85,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: cargocrypt
           key: ${{ matrix.target }}
 
       - name: Install musl tooling
         if: matrix.musl
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      # The crate lives in cargocrypt/ (no root manifest): build from there,
-      # keep dist/ at the workspace root so `uses:` steps (attest, upload)
-      # see the same relative paths.
       - name: Build
-        working-directory: cargocrypt
         run: cargo build --release --locked --target ${{ matrix.target }} --bin cargocrypt
 
       - name: Package
@@ -116,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "cargocrypt/target/${{ matrix.target }}/release/cargocrypt" "dist/cargocrypt-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/cargocrypt" "dist/cargocrypt-${{ matrix.target }}"
           cd dist
           shasum -a 256 "cargocrypt-${{ matrix.target }}" > "cargocrypt-${{ matrix.target }}.sha256"
 
@@ -124,7 +107,6 @@ jobs:
       # target's binary, published next to it.
       - name: Generate SBOM
         shell: bash
-        working-directory: cargocrypt
         run: |
           set -euo pipefail
           cargo install cargo-cyclonedx --locked --version "${CYCLONEDX_VERSION}"
@@ -134,24 +116,21 @@ jobs:
             echo "expected exactly one SBOM for ${{ matrix.target }}, got: $*" >&2
             exit 1
           fi
-          cp "$1" "$GITHUB_WORKSPACE/dist/cargocrypt-${{ matrix.target }}.cdx.json"
+          cp "$1" "dist/cargocrypt-${{ matrix.target }}.cdx.json"
 
-      # SLSA build provenance: binds the binary's digest to this workflow run
-      # and commit.
       # Attestations name the RUN's ref/sha, so only sign when the run is
       # the tag itself: a tag push, or a dispatch started with
       #   gh workflow run release-binaries.yml --ref vX.Y.Z
-      # (a dispatch from a branch would otherwise attest that branch's sha,
-      # not the tag actually built). Never on pull_request: fork PRs have no
-      # OIDC and unmerged code shouldn't be attested.
+      # Never on pull_request: fork PRs have no OIDC and unmerged code
+      # shouldn't be attested.
       - name: Attest build provenance
         if: github.event_name != 'pull_request' && github.ref_type == 'tag'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: dist/cargocrypt-${{ matrix.target }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cargocrypt-${{ matrix.target }}
           path: dist/
@@ -165,7 +144,7 @@ jobs:
       contents: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
