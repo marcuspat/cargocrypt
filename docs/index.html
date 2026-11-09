@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>cargocrypt — marcuspat</title>
 <meta name="description" content="Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI. Not yet audited.">
+<link rel="canonical" href="https://marcuspat.github.io/cargocrypt/">
 <meta property="og:title" content="cargocrypt">
 <meta property="og:description" content="Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI. Not yet audited.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://marcuspat.github.io/cargocrypt/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="cargocrypt">
+<meta name="twitter:description" content="Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI. Not yet audited.">
+<meta name="robots" content="index,follow">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='#22d3ee' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='5' fill='#a78bfa'/%3E%3C/svg%3E">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -63,6 +68,9 @@ footer a:hover{color:var(--a1)}
 @media(max-width:640px){.nav{padding:12px 16px}.hero-inner{padding:44px 18px 32px}.stats{gap:14px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition:none !important}}
 </style>
+<style>details{border:1px solid var(--line);border-radius:11px;padding:14px 18px;background:var(--card)}details+details{margin-top:10px}summary{cursor:pointer;font-weight:600;font-size:14.5px}summary:hover{color:var(--a1)}details p{margin-top:10px;font-size:13.8px;color:var(--mut)}</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareSourceCode", "name": "cargocrypt", "description": "Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI. Not yet audited.", "url": "https://marcuspat.github.io/cargocrypt/", "codeRepository": "https://github.com/marcuspat/cargocrypt", "programmingLanguage": "Rust", "keywords": "argon2, chacha20, chacha20poly1305, cli, cryptography, encryption, git, integration, rust, secret-management, security, security-tools", "author": {"@type": "Person", "name": "marcuspat", "url": "https://github.com/marcuspat"}, "maintainer": {"@type": "Person", "name": "marcuspat", "url": "https://github.com/marcuspat"}, "dateModified": "2026-11-06T21:24:35Z", "version": "v0.3.0", "isAccessibleForFree": true, "license": "https://github.com/marcuspat/cargocrypt/blob/HEAD/LICENSE"}, {"@type": "WebSite", "name": "cargocrypt — marcuspat", "url": "https://marcuspat.github.io/cargocrypt/", "publisher": {"@type": "Person", "name": "marcuspat"}}, {"@type": "Person", "name": "marcuspat", "url": "https://github.com/marcuspat", "description": "Agentic Engineer — Platform Engineering × AI-assisted development"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is cargocrypt?", "acceptedAnswer": {"@type": "Answer", "text": "Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI."}}, {"@type": "Question", "name": "Who maintains cargocrypt?", "acceptedAnswer": {"@type": "Answer", "text": "marcuspat — Agentic Engineer — Platform Engineering × AI-assisted development. Source code and issues live on GitHub at github.com/marcuspat/cargocrypt."}}, {"@type": "Question", "name": "How do I install cargocrypt?", "acceptedAnswer": {"@type": "Answer", "text": "Run `cargo install cargocrypt` (via crates.io). Full instructions in the repository README."}}]}</script>
 </head>
 <body>
 <header class="nav">
@@ -115,11 +123,12 @@ footer a:hover{color:var(--a1)}
 <main>
 <section id="about"><h2>What it does</h2><div class="cards"><div class="card"><h3>Zero-config encryption</h3><p>ChaCha20-Poly1305 + Argon2id for Rust projects — no key ceremony, no YAML: drop it in and encrypt.</p></div><div class="card"><h3>Secrets stop at the hook</h3><p>Git hooks scan for secrets before they enter history, not after they leak.</p></div><div class="card"><h3>TUI included</h3><p>A terminal interface for encrypt, decrypt and inspect — built for real workflows, not demos.</p></div></div></section>
 <section id="install"><h2>Install</h2><div class="install"><pre><code>cargo install cargocrypt</code><button class="copy" onclick="cp(this)">copy</button></pre><p style="color:var(--mut);font-size:12.5px;margin-top:10px">via crates.io</p></div></section>
+<section id="faq"><h2>FAQ</h2><div class="faq"><details><summary>What is cargocrypt?</summary><p>Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI.</p></details><details><summary>Who maintains cargocrypt?</summary><p>marcuspat — Agentic Engineer — Platform Engineering × AI-assisted development. Source code and issues live on GitHub at github.com/marcuspat/cargocrypt.</p></details><details><summary>How do I install cargocrypt?</summary><p>Run `cargo install cargocrypt` (via crates.io). Full instructions in the repository README.</p></details></div></section>
 <section id="more"><h2>Explore</h2><div class="links">
 <a href="https://github.com/marcuspat/cargocrypt#readme">README <span class="arr">→</span></a>
 <a href="https://github.com/marcuspat/cargocrypt/releases">Releases <span class="arr">→</span></a>
 <a href="https://github.com/marcuspat/cargocrypt/issues">Issues <span class="arr">→</span></a>
-<a href="https://github.com/marcuspat/cargocrypt/license">License <span class="arr">→</span></a>
+<a href="https://github.com/marcuspat/cargocrypt/blob/HEAD/LICENSE">License <span class="arr">→</span></a>
 </div></section>
 </main>
 <footer>
