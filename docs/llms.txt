@@ -1,0 +1,15 @@
+# cargocrypt
+
+> Zero-config file encryption for Rust projects — ChaCha20-Poly1305 + Argon2id, git hooks for secret detection, TUI. Not yet audited.
+
+cargocrypt is maintained by marcuspat (Agentic Engineer — Platform Engineering × AI-assisted development).
+
+## Links
+
+- [Landing page](https://marcuspat.github.io/cargocrypt/): overview, features, FAQ
+- [Source code](https://github.com/marcuspat/cargocrypt): README, issues, releases
+## Install
+
+```
+cargo install cargocrypt
+```
