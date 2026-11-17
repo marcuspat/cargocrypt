@@ -18,9 +18,8 @@ It has had no independent security audit. Read [SECURITY.md](SECURITY.md)
 for what it does and does not protect before trusting it with anything that
 matters.
 
-> The version published on crates.io (0.2.3) predates most of what is
-> described here. This README describes 0.3.0, which is not yet published.
-> See the [changelog](CHANGELOG.md) before upgrading.
+> 0.3.0 is live on crates.io — `cargo install cargocrypt`. See the
+> [changelog](CHANGELOG.md) before upgrading.
 
 ## Install
 
