@@ -69,7 +69,6 @@ rayon = "1.8"  # For parallel scanning
 
 # System information
 num_cpus = "1.16"
-chrono = "0.4"
 
 # Compression for git storage
 flate2 = "1.0"
