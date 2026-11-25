@@ -1106,11 +1106,7 @@ impl FileScanner {
         }
 
         // Check for sequential patterns
-        if self.is_sequential_pattern(text) {
-            return true;
-        }
-
-        false
+        self.is_sequential_pattern(text)
     }
 
     /// Tokenize content into analyzable units
